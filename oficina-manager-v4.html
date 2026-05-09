@@ -123,8 +123,8 @@ async function carregarTudo() {
     handle(db.from('config').select('*').eq('workspace_id', wid).maybeSingle()),
     handle(db.from('profiles').select('*').eq('workspace_id', wid)),
   ]);
-  DB.colabs = colabs; DB.veiculos = veiculos.map(v => ({ ...v, itens: v.orcamento_itens || [] }));
-  DB.pagamentos = pagamentos; DB.clientes = clientes; DB.agenda = agenda;
+  DB.colabs = colabs; DB.clientes = clientes; DB.veiculos = veiculos.map(veiculoDoDb);
+  DB.pagamentos = pagamentos; DB.agenda = agenda;
   DB.estoque = estoque; DB.auditoria = auditoria; DB.fila = fila;
   DB.parcelas = parcelas; DB.notas = notas; DB.satisf = satisf;
   DB.lancamentos = lancamentos; DB.config = config?.dados || {};
@@ -141,23 +141,110 @@ async function carregarTudo() {
   }
 }
 
+// ─── MAPPERS UI ↔ DB ──────────────────────────────────────────
+const STATUS_VALIDOS = new Set(['aguardando','em-andamento','aguardando-pecas','pronto','entregue','cancelado']);
+const soDigitos = s => (s || '').toString().replace(/\D/g, '');
+function combinarDataHora(data, hora) {
+  if (!data) return null;
+  const h = (hora && /^\d{1,2}:\d{2}$/.test(hora)) ? hora : '00:00';
+  const d = new Date(data + 'T' + h + ':00');
+  return isNaN(d) ? null : d.toISOString();
+}
+function separarDataHora(iso) {
+  if (!iso) return { data: null, hora: null };
+  const d = new Date(iso); if (isNaN(d)) return { data: null, hora: null };
+  const p = n => String(n).padStart(2, '0');
+  return { data: d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()), hora: p(d.getHours())+':'+p(d.getMinutes()) };
+}
+function veiculoParaDb(v) {
+  const status = STATUS_VALIDOS.has(v.kanbanStatus) ? v.kanbanStatus : (STATUS_VALIDOS.has(v.status) ? v.status : 'aguardando');
+  const entrada_em = v.entrada_em || combinarDataHora(v.dataEntrada, v.horaEntrada) || v.timestampEntrada || null;
+  const saida_em = v.saida_em || (v.saida ? combinarDataHora(v.saida.data, v.saida.hora) : null);
+  const meta = {
+    telefone: v.telefone || null,
+    cliente_nome: v.cliente || null,
+    registradoPor: v.registradoPor || null,
+    timestampEntrada: v.timestampEntrada || null,
+    orcamentoStatus: v.orcamentoStatus || null,
+    tempoTrabalhado: v.tempoTrabalhado || 0,
+    vistoria: v.vistoria || null,
+    saidaPor: v.saida && v.saida.registradoPor || null,
+  };
+  return {
+    id: v.id && !v.id.toString().startsWith('tmp_') ? v.id : undefined,
+    cliente_id: v.cliente_id || null,
+    placa: v.placa || null, modelo: v.modelo || null, cor: v.cor || null, ano: v.ano || null,
+    km: v.km != null ? v.km : null,
+    servico: v.servico || null, descricao: v.descricao || null,
+    status,
+    responsavel_id: v.responsavel_id || v.mecanicoId || null,
+    valor_orcamento: v.valor_orcamento != null ? v.valor_orcamento : (v.orcamento != null ? v.orcamento : null),
+    valor_final: v.valor_final != null ? v.valor_final : (v.saida && v.saida.valor != null ? v.saida.valor : null),
+    nivel_combustivel: v.nivel_combustivel != null ? v.nivel_combustivel : (v.vistoria && v.vistoria.nivel != null ? v.vistoria.nivel : null),
+    entrada_em, saida_em,
+    prazo: v.prazo || null,
+    nota_numero: v.nota_numero != null ? v.nota_numero : null,
+    fc_lanc_id: v.fc_lanc_id || null,
+    meta,
+  };
+}
+function veiculoDoDb(row) {
+  const ent = separarDataHora(row.entrada_em);
+  const sai = separarDataHora(row.saida_em);
+  const meta = row.meta || {};
+  const cCache = (DB.clientes || []).find(c => c.id === row.cliente_id);
+  return {
+    ...row,
+    itens: row.orcamento_itens || [],
+    cliente: (cCache && cCache.nome) || meta.cliente_nome || '',
+    telefone: (cCache && cCache.telefone) || meta.telefone || '',
+    mecanicoId: row.responsavel_id || null,
+    orcamento: row.valor_orcamento != null ? row.valor_orcamento : 0,
+    kanbanStatus: row.status,
+    dataEntrada: ent.data, horaEntrada: ent.hora,
+    timestampEntrada: meta.timestampEntrada || row.entrada_em,
+    registradoPor: meta.registradoPor || '',
+    orcamentoStatus: meta.orcamentoStatus || null,
+    tempoTrabalhado: meta.tempoTrabalhado || 0,
+    vistoria: meta.vistoria || null,
+    saida: row.saida_em ? { data: sai.data, hora: sai.hora, valor: row.valor_final != null ? row.valor_final : 0, registradoPor: meta.saidaPor || '' } : null,
+  };
+}
+async function sbResolverCliente(nome, telefone) {
+  if (!nome && !telefone) return null;
+  const tel = soDigitos(telefone);
+  let achado = null;
+  if (tel) achado = (DB.clientes || []).find(c => soDigitos(c.telefone) === tel);
+  if (!achado && nome) {
+    const n = nome.trim().toLowerCase();
+    achado = (DB.clientes || []).find(c => (c.nome || '').trim().toLowerCase() === n);
+  }
+  if (achado) return achado.id;
+  const novo = await handle(db.from('clientes').insert({ workspace_id: wsId(), nome: nome || 'Sem nome', telefone: telefone || null }).select().single());
+  DB.clientes = [novo, ...(DB.clientes || [])];
+  return novo.id;
+}
+
 async function sbSalvarVeiculo(veiculo) {
-  const { itens, orcamento_itens, ...row } = veiculo;
+  if (!veiculo.cliente_id && (veiculo.cliente || veiculo.telefone)) {
+    veiculo.cliente_id = await sbResolverCliente(veiculo.cliente, veiculo.telefone);
+  }
+  const row = veiculoParaDb(veiculo);
   row.workspace_id = wsId();
-  let savedId;
-  if (row.id && !row.id.toString().startsWith('tmp_')) {
-    const updated = await handle(db.from('veiculos').update(row).eq('id', row.id).select().single());
-    savedId = updated.id;
+  let saved;
+  if (row.id) {
+    saved = await handle(db.from('veiculos').update(row).eq('id', row.id).select().single());
   } else {
     delete row.id;
-    const inserted = await handle(db.from('veiculos').insert(row).select().single());
-    savedId = inserted.id;
+    saved = await handle(db.from('veiculos').insert(row).select().single());
   }
+  const savedId = saved.id;
+  const itens = veiculo.itens || veiculo.orcamento_itens;
   if (Array.isArray(itens)) {
     await handle(db.from('orcamento_itens').delete().eq('veiculo_id', savedId));
     if (itens.length > 0) {
       await handle(db.from('orcamento_itens').insert(
-        itens.map((it, i) => ({ veiculo_id: savedId, workspace_id: wsId(), descricao: it.descricao || it.desc, quantidade: it.quantidade || it.qtd || 1, preco_unit: it.preco_unit || it.preco || 0, ordem: i }))
+        itens.map((it, i) => ({ veiculo_id: savedId, workspace_id: wsId(), descricao: it.descricao || it.desc || '', quantidade: it.quantidade || it.qtd || 1, preco_unit: it.preco_unit || it.preco || ((it.mo || 0) + (it.pecas || 0)), ordem: i }))
       ));
     }
   }
@@ -243,8 +330,10 @@ function sbInscreverRealtime(onUpdate) {
 function aplicarMudancaLocal(tabela, evento, registro) {
   const chave = { veiculos:'veiculos', pagamentos:'pagamentos', estoque:'estoque', agenda:'agenda', fila:'fila', notas:'notas' }[tabela];
   if (!chave) return;
-  if (evento === 'INSERT') DB[chave] = [registro, ...DB[chave]];
-  else if (evento === 'UPDATE') DB[chave] = DB[chave].map(r => r.id === registro.id ? { ...r, ...registro } : r);
+  // veiculos vem do Postgres em snake_case — passar pelo mapper p/ a UI ler dataEntrada, kanbanStatus, etc.
+  const norm = (tabela === 'veiculos' && registro && registro.id) ? veiculoDoDb(registro) : registro;
+  if (evento === 'INSERT') DB[chave] = [norm, ...DB[chave]];
+  else if (evento === 'UPDATE') DB[chave] = DB[chave].map(r => r.id === norm.id ? { ...r, ...norm } : r);
   else if (evento === 'DELETE') DB[chave] = DB[chave].filter(r => r.id !== registro.id);
 }
 
