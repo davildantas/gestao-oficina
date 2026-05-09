@@ -33,8 +33,63 @@ function wsId() {
 
 async function handle(promise) {
   const { data, error } = await promise;
-  if (error) { console.error('[Supabase]', error.message); throw error; }
+  if (error) {
+    console.error('[Supabase]', error);
+    const msg = traduzirErro(error);
+    error.friendlyMessage = msg;
+    throw error;
+  }
   return data;
+}
+
+/* ════════════════════════════════════════════════════════════
+   HELPERS GLOBAIS — Fase 3
+   safeOp:   executa op assíncrona com feedback de erro (toast)
+   withLock: evita execução concorrente da mesma chave
+   debounce: clássico
+   confirmarAcao: confirm() com texto padronizado
+   ════════════════════════════════════════════════════════════ */
+const _locks = new Set();
+async function withLock(key, fn) {
+  if (_locks.has(key)) return null;
+  _locks.add(key);
+  try { return await fn(); }
+  finally { _locks.delete(key); }
+}
+async function safeOp(label, fn, opts={}) {
+  const btn = opts.btn || null;
+  const txtOld = btn?.textContent;
+  if (btn) { btn.disabled = true; btn.textContent = opts.loadingText || 'Salvando…'; }
+  try {
+    const out = await fn();
+    if (opts.successToast) toast(opts.successToast, 'success');
+    return out;
+  } catch (e) {
+    toast(`${label}: ${e.friendlyMessage || e.message}`, 'error');
+    if (opts.rethrow) throw e;
+    return null;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = txtOld; }
+  }
+}
+function debounce(fn, ms=300){
+  let t; return function(...a){ clearTimeout(t); t=setTimeout(()=>fn.apply(this,a),ms); };
+}
+function confirmarAcao(msg){ return confirm(msg); }
+
+function traduzirErro(err) {
+  const code = err?.code || '';
+  const msg = err?.message || '';
+  if (code === '23503' || /foreign key/i.test(msg))
+    return 'Não foi possível excluir: existem registros vinculados.';
+  if (code === '23505' || /duplicate key/i.test(msg))
+    return 'Registro duplicado: este item já existe.';
+  if (code === '23502') return 'Campo obrigatório não preenchido.';
+  if (code === '42501' || /permission|row.level/i.test(msg))
+    return 'Sem permissão para esta operação.';
+  if (code === 'PGRST116') return 'Registro não encontrado.';
+  if (/network|fetch/i.test(msg)) return 'Falha de conexão. Verifique sua internet.';
+  return msg || 'Erro inesperado. Tente novamente.';
 }
 
 async function sbLogin(email, senha) {
@@ -123,8 +178,8 @@ async function carregarTudo() {
     handle(db.from('config').select('*').eq('workspace_id', wid).maybeSingle()),
     handle(db.from('profiles').select('*').eq('workspace_id', wid)),
   ]);
-  DB.colabs = colabs; DB.veiculos = veiculos.map(v => ({ ...v, itens: v.orcamento_itens || [] }));
-  DB.pagamentos = pagamentos; DB.clientes = clientes; DB.agenda = agenda;
+  DB.colabs = colabs; DB.clientes = clientes; DB.veiculos = veiculos.map(veiculoDoDb);
+  DB.pagamentos = pagamentos; DB.agenda = agenda;
   DB.estoque = estoque; DB.auditoria = auditoria; DB.fila = fila;
   DB.parcelas = parcelas; DB.notas = notas; DB.satisf = satisf;
   DB.lancamentos = lancamentos; DB.config = config?.dados || {};
@@ -141,23 +196,110 @@ async function carregarTudo() {
   }
 }
 
+// ─── MAPPERS UI ↔ DB (veiculos) ───────────────────────────────
+const STATUS_VALIDOS = new Set(['aguardando','em-andamento','aguardando-pecas','pronto','entregue','cancelado']);
+const soDigitos = s => (s || '').toString().replace(/\D/g, '');
+function combinarDataHora(data, hora) {
+  if (!data) return null;
+  const h = (hora && /^\d{1,2}:\d{2}$/.test(hora)) ? hora : '00:00';
+  const d = new Date(data + 'T' + h + ':00');
+  return isNaN(d) ? null : d.toISOString();
+}
+function separarDataHora(iso) {
+  if (!iso) return { data: null, hora: null };
+  const d = new Date(iso); if (isNaN(d)) return { data: null, hora: null };
+  const p = n => String(n).padStart(2, '0');
+  return { data: d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()), hora: p(d.getHours())+':'+p(d.getMinutes()) };
+}
+function veiculoParaDb(v) {
+  const status = STATUS_VALIDOS.has(v.kanbanStatus) ? v.kanbanStatus : (STATUS_VALIDOS.has(v.status) ? v.status : 'aguardando');
+  const entrada_em = v.entrada_em || combinarDataHora(v.dataEntrada, v.horaEntrada) || v.timestampEntrada || null;
+  const saida_em = v.saida_em || (v.saida ? combinarDataHora(v.saida.data, v.saida.hora) : null);
+  const meta = {
+    telefone: v.telefone || null,
+    cliente_nome: v.cliente || null,
+    registradoPor: v.registradoPor || null,
+    timestampEntrada: v.timestampEntrada || null,
+    orcamentoStatus: v.orcamentoStatus || null,
+    tempoTrabalhado: v.tempoTrabalhado || 0,
+    vistoria: v.vistoria || null,
+    saidaPor: v.saida && v.saida.registradoPor || null,
+  };
+  return {
+    id: v.id && !v.id.toString().startsWith('tmp_') ? v.id : undefined,
+    cliente_id: v.cliente_id || null,
+    placa: v.placa || null, modelo: v.modelo || null, cor: v.cor || null, ano: v.ano || null,
+    km: v.km != null ? v.km : null,
+    servico: v.servico || null, descricao: v.descricao || null,
+    status,
+    responsavel_id: v.responsavel_id || v.mecanicoId || null,
+    valor_orcamento: v.valor_orcamento != null ? v.valor_orcamento : (v.orcamento != null ? v.orcamento : null),
+    valor_final: v.valor_final != null ? v.valor_final : (v.saida && v.saida.valor != null ? v.saida.valor : null),
+    nivel_combustivel: v.nivel_combustivel != null ? v.nivel_combustivel : (v.vistoria && v.vistoria.nivel != null ? v.vistoria.nivel : null),
+    entrada_em, saida_em,
+    prazo: v.prazo || null,
+    nota_numero: v.nota_numero != null ? v.nota_numero : null,
+    fc_lanc_id: v.fc_lanc_id || null,
+    meta,
+  };
+}
+function veiculoDoDb(row) {
+  const ent = separarDataHora(row.entrada_em);
+  const sai = separarDataHora(row.saida_em);
+  const meta = row.meta || {};
+  const cCache = (DB.clientes || []).find(c => c.id === row.cliente_id);
+  return {
+    ...row,
+    itens: row.orcamento_itens || [],
+    cliente: (cCache && cCache.nome) || meta.cliente_nome || '',
+    telefone: (cCache && cCache.telefone) || meta.telefone || '',
+    mecanicoId: row.responsavel_id || null,
+    orcamento: row.valor_orcamento != null ? row.valor_orcamento : 0,
+    kanbanStatus: row.status,
+    dataEntrada: ent.data, horaEntrada: ent.hora,
+    timestampEntrada: meta.timestampEntrada || row.entrada_em,
+    registradoPor: meta.registradoPor || '',
+    orcamentoStatus: meta.orcamentoStatus || null,
+    tempoTrabalhado: meta.tempoTrabalhado || 0,
+    vistoria: meta.vistoria || null,
+    saida: row.saida_em ? { data: sai.data, hora: sai.hora, valor: row.valor_final != null ? row.valor_final : 0, registradoPor: meta.saidaPor || '' } : null,
+  };
+}
+async function sbResolverCliente(nome, telefone) {
+  if (!nome && !telefone) return null;
+  const tel = soDigitos(telefone);
+  let achado = null;
+  if (tel) achado = (DB.clientes || []).find(c => soDigitos(c.telefone) === tel);
+  if (!achado && nome) {
+    const n = nome.trim().toLowerCase();
+    achado = (DB.clientes || []).find(c => (c.nome || '').trim().toLowerCase() === n);
+  }
+  if (achado) return achado.id;
+  const novo = await handle(db.from('clientes').insert({ workspace_id: wsId(), nome: nome || 'Sem nome', telefone: telefone || null }).select().single());
+  DB.clientes = [novo, ...(DB.clientes || [])];
+  return novo.id;
+}
+
 async function sbSalvarVeiculo(veiculo) {
-  const { itens, orcamento_itens, ...row } = veiculo;
+  if (!veiculo.cliente_id && (veiculo.cliente || veiculo.telefone)) {
+    veiculo.cliente_id = await sbResolverCliente(veiculo.cliente, veiculo.telefone);
+  }
+  const row = veiculoParaDb(veiculo);
   row.workspace_id = wsId();
-  let savedId;
-  if (row.id && !row.id.toString().startsWith('tmp_')) {
-    const updated = await handle(db.from('veiculos').update(row).eq('id', row.id).select().single());
-    savedId = updated.id;
+  let saved;
+  if (row.id) {
+    saved = await handle(db.from('veiculos').update(row).eq('id', row.id).select().single());
   } else {
     delete row.id;
-    const inserted = await handle(db.from('veiculos').insert(row).select().single());
-    savedId = inserted.id;
+    saved = await handle(db.from('veiculos').insert(row).select().single());
   }
+  const savedId = saved.id;
+  const itens = veiculo.itens || veiculo.orcamento_itens;
   if (Array.isArray(itens)) {
     await handle(db.from('orcamento_itens').delete().eq('veiculo_id', savedId));
     if (itens.length > 0) {
       await handle(db.from('orcamento_itens').insert(
-        itens.map((it, i) => ({ veiculo_id: savedId, workspace_id: wsId(), descricao: it.descricao || it.desc, quantidade: it.quantidade || it.qtd || 1, preco_unit: it.preco_unit || it.preco || 0, ordem: i }))
+        itens.map((it, i) => ({ veiculo_id: savedId, workspace_id: wsId(), descricao: it.descricao || it.desc || '', quantidade: it.quantidade || it.qtd || 1, preco_unit: it.preco_unit || it.preco || ((it.mo || 0) + (it.pecas || 0)), ordem: i }))
       ));
     }
   }
@@ -186,7 +328,25 @@ async function sbSalvarEstoque(item) {
   if (row.id) return handle(db.from('estoque').update(row).eq('id', row.id).select().single());
   delete row.id; return handle(db.from('estoque').insert(row).select().single());
 }
-async function sbAjustarEstoque(id, delta) { await handle(db.rpc('ajustar_estoque', { p_id: id, p_delta: delta })); }
+
+// ── Movimentações de estoque (RPC movimentar_estoque, schema fixes-fase1.sql) ──
+async function sbMovimentarEstoque(estoqueId, tipo, quantidade, motivo, veiculoId) {
+  return handle(db.rpc('movimentar_estoque', {
+    p_estoque_id: estoqueId, p_tipo: tipo,
+    p_quantidade: quantidade, p_motivo: motivo || null,
+    p_veiculo_id: veiculoId || null,
+  }));
+}
+async function adicionarEstoque(id, qtd, motivo)        { return sbMovimentarEstoque(id, 'entrada', qtd, motivo); }
+async function removerEstoque(id, qtd, motivo, vid)     { return sbMovimentarEstoque(id, 'saida',   qtd, motivo, vid); }
+async function ajustarEstoque(id, novoSaldo, motivo)    { return sbMovimentarEstoque(id, 'ajuste',  novoSaldo, motivo); }
+
+async function sbCarregarMovimentacoes(estoqueId, limit=50) {
+  let q = db.from('estoque_movimentacoes').select('*').eq('workspace_id', wsId())
+            .order('criado_em',{ascending:false}).limit(limit);
+  if (estoqueId) q = q.eq('estoque_id', estoqueId);
+  return handle(q);
+}
 
 async function sbSalvarPagamento(pag) {
   const row = { ...pag, workspace_id: wsId() }; delete row.id;
@@ -229,7 +389,7 @@ async function sbAlterarRoleUsuario(userId, novoRole) {
 
 function sbInscreverRealtime(onUpdate) {
   const wid = wsId();
-  ['veiculos','pagamentos','estoque','agenda','fila','notas'].forEach(tabela => {
+  ['veiculos','pagamentos','estoque','agenda','fila','notas','estoque_movimentacoes'].forEach(tabela => {
     db.channel('realtime:'+tabela+':'+wid)
       .on('postgres_changes', { event: '*', schema: 'public', table: tabela, filter: 'workspace_id=eq.'+wid },
         payload => {
@@ -243,8 +403,10 @@ function sbInscreverRealtime(onUpdate) {
 function aplicarMudancaLocal(tabela, evento, registro) {
   const chave = { veiculos:'veiculos', pagamentos:'pagamentos', estoque:'estoque', agenda:'agenda', fila:'fila', notas:'notas' }[tabela];
   if (!chave) return;
-  if (evento === 'INSERT') DB[chave] = [registro, ...DB[chave]];
-  else if (evento === 'UPDATE') DB[chave] = DB[chave].map(r => r.id === registro.id ? { ...r, ...registro } : r);
+  // veiculos vem do Postgres em snake_case — passar pelo mapper p/ a UI ler dataEntrada, kanbanStatus, etc.
+  const norm = (tabela === 'veiculos' && registro && registro.id) ? veiculoDoDb(registro) : registro;
+  if (evento === 'INSERT') DB[chave] = [norm, ...DB[chave]];
+  else if (evento === 'UPDATE') DB[chave] = DB[chave].map(r => r.id === norm.id ? { ...r, ...norm } : r);
   else if (evento === 'DELETE') DB[chave] = DB[chave].filter(r => r.id !== registro.id);
 }
 
@@ -717,14 +879,33 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 
     <!-- ESTOQUE -->
     <div id="panel-estoque" class="panel">
-      <div class="page-header"><div><div class="page-title">Estoque de Peças</div><div class="page-sub">Baixa automática + alertas de nível mínimo</div></div><button class="btn-primary" onclick="abrirModalEstoque()">+ Nova peça</button></div>
+      <div class="page-header"><div><div class="page-title">Estoque de Materiais</div><div class="page-sub">Baixa automática + alertas de nível mínimo</div></div><button class="btn-primary" onclick="abrirModalEstoque()">+ Novo material</button></div>
       <div id="estoque-alerta" class="danger-box"></div>
       <div class="metrics" style="grid-template-columns:repeat(3,1fr);">
-        <div class="metric-card"><div class="metric-label">Itens cadastrados</div><div class="metric-value blue" id="est-total">0</div><div class="metric-sub">peças</div></div>
+        <div class="metric-card"><div class="metric-label">Itens cadastrados</div><div class="metric-value blue" id="est-total">0</div><div class="metric-sub">materiais</div></div>
         <div class="metric-card"><div class="metric-label">Valor em estoque</div><div class="metric-value green" id="est-valor">R$ 0,00</div><div class="metric-sub">preço de custo</div></div>
         <div class="metric-card"><div class="metric-label">Abaixo do mínimo</div><div class="metric-value red" id="est-criticos">0</div><div class="metric-sub">itens críticos</div></div>
       </div>
-      <div class="card"><div class="card-title">Peças</div><div id="estoque-tabela"></div></div>
+      <div class="card">
+        <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+          <span>Materiais</span>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+            <input type="text" id="est-busca" placeholder="Buscar nome, código, fornecedor…" oninput="atualizarEstoque()" style="height:32px;padding:0 10px;border:1px solid var(--border2);border-radius:var(--radius);font-size:12px;width:230px;background:var(--surface);color:var(--text);font-family:'DM Sans',sans-serif;outline:none;">
+            <button class="filter-btn active" data-est-filtro="todos" onclick="setEstFiltro('todos',this)">Todos</button>
+            <button class="filter-btn" data-est-filtro="criticos" onclick="setEstFiltro('criticos',this)">Críticos</button>
+            <button class="filter-btn" data-est-filtro="ok" onclick="setEstFiltro('ok',this)">OK</button>
+            <select id="est-ordem" onchange="atualizarEstoque()" style="height:32px;padding:0 8px;border:1px solid var(--border2);border-radius:var(--radius);font-size:12px;background:var(--surface);color:var(--text);font-family:'DM Sans',sans-serif;">
+              <option value="nome">Ordenar: Nome</option>
+              <option value="qtd">Ordenar: Quantidade</option>
+              <option value="valor">Ordenar: Valor total</option>
+              <option value="status">Ordenar: Status</option>
+            </select>
+            <button class="btn-sm" onclick="toggleHistEstoque()">📜 Histórico</button>
+          </div>
+        </div>
+        <div id="estoque-tabela"></div>
+        <div id="estoque-historico" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:12px;"></div>
+      </div>
     </div>
 
     <!-- COLABORADORES -->
@@ -914,7 +1095,16 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
         <div class="form-row"><div class="form-group"><label>Nome da oficina</label><input type="text" id="cfg-nome"></div><div class="form-group"><label>Capacidade máxima do pátio</label><input type="number" id="cfg-capacidade" min="1" placeholder="20"></div></div>
         <div class="form-row"><div class="form-group"><label>Categoria salário (FinControl)</label><input type="text" id="cfg-cat-salario"></div><div class="form-group"><label>Categoria serviço (FinControl)</label><input type="text" id="cfg-cat-servico"></div></div>
         <div class="form-row"><div class="form-group"><label>Lançar receita ao registrar saída?</label><select id="cfg-auto-receita"><option value="ask">Perguntar a cada saída</option><option value="always">Sempre lançar</option><option value="never">Nunca lançar</option></select></div><div class="form-group"><label>Categoria compra de peças (FinControl)</label><input type="text" id="cfg-cat-pecas"></div></div>
+        <div class="form-row" data-role="dono,socio"><div class="form-group"><label>Permitir alterar data de entrada do veículo?</label><select id="cfg-permitir-edit-entrada"><option value="sim">Sim — dono e sócio podem alterar</option><option value="nao">Não — bloqueado para todos</option></select><div style="font-size:11px;color:var(--text3);margin-top:4px;">Quando bloqueado, o botão "✏️ Alterar data" não aparece nem funciona, mesmo para dono/sócio.</div></div></div>
         <button class="btn-primary" onclick="salvarConfig()">Salvar configurações</button>
+      </div>
+      <div class="card">
+        <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+          <span>🩺 Validador do sistema</span>
+          <button class="btn-primary" onclick="rodarValidador()">Rodar auditoria completa</button>
+        </div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:10px;">Verifica integridade dos dados, regras de negócio e fluxos da UI. Rode periodicamente para detectar inconsistências.</div>
+        <div id="validador-resultado"></div>
       </div>
       <div class="card"><div class="card-title">Usuários do sistema<button class="btn-primary" onclick="abrirModalUser()">+ Novo usuário</button></div><div id="users-tabela"></div></div>
       <div class="card" id="card-convites" data-role="dono,socio,gerente">
@@ -1089,7 +1279,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
     <div class="modal-actions">
       <button class="btn-secondary" onclick="fecharModalId('modal-saida')">Cancelar</button>
       <button class="btn-secondary" onclick="imprimirRecibo()">🖨️ Recibo</button>
-      <button class="btn-secondary" onclick="imprimirOS(parseInt(document.getElementById('saida-id').value))">🖨️ OS</button>
+      <button class="btn-secondary" onclick="imprimirOS(document.getElementById('saida-id').value)">🖨️ OS</button>
       <button class="btn-primary" onclick="confirmarSaida()">Confirmar saída</button>
     </div>
   </div>
@@ -1101,6 +1291,24 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
     <div class="modal-title" id="det-titulo">Detalhes do veículo</div>
     <div id="det-conteudo"></div>
     <div class="modal-actions"><button class="btn-secondary" onclick="fecharModalId('modal-detalhes')">Fechar</button></div>
+  </div>
+</div>
+
+<!-- EDITAR DATA DE ENTRADA (somente dono/sócio) -->
+<div id="modal-edit-entrada" class="modal-bg" onclick="fecharModal(event,'modal-edit-entrada')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title">Alterar data/hora de entrada</div>
+    <input type="hidden" id="edit-entrada-id">
+    <div id="edit-entrada-info" style="font-size:13px;color:var(--text2);margin-bottom:10px;"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Data de entrada *</label><input type="date" id="edit-entrada-data"></div>
+      <div class="form-group"><label>Hora de entrada *</label><input type="time" id="edit-entrada-hora"></div>
+    </div>
+    <div class="form-group"><label>Motivo da alteração (auditoria)</label><input type="text" id="edit-entrada-motivo" placeholder="Ex: correção de digitação"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="fecharModalId('modal-edit-entrada')">Cancelar</button>
+      <button class="btn-primary" onclick="salvarEditarDataEntrada()">Salvar alteração</button>
+    </div>
   </div>
 </div>
 
@@ -1185,12 +1393,36 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 <!-- ESTOQUE -->
 <div id="modal-estoque" class="modal-bg" onclick="fecharModal(event,'modal-estoque')">
   <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-title" id="modal-est-title">Nova peça</div>
+    <div class="modal-title" id="modal-est-title">Novo material</div>
     <input type="hidden" id="est-id">
-    <div class="form-row"><div class="form-group"><label>Nome da peça *</label><input type="text" id="est-nome" placeholder="Ex: Filtro de ar"></div><div class="form-group"><label>Código / SKU</label><input type="text" id="est-codigo" placeholder="FA-001"></div></div>
+    <div class="form-row"><div class="form-group"><label>Nome do material *</label><input type="text" id="est-nome" placeholder="Ex: Filtro de ar"></div><div class="form-group"><label>Código / SKU</label><input type="text" id="est-codigo" placeholder="FA-001"></div></div>
     <div class="form-row triple"><div class="form-group"><label>Quantidade *</label><input type="number" id="est-qtd" min="0" step="1" placeholder="0"></div><div class="form-group"><label>Estoque mínimo *</label><input type="number" id="est-minimo" min="0" step="1" placeholder="2"></div><div class="form-group"><label>Preço unit. (R$)</label><input type="number" id="est-preco" min="0" step="0.01" placeholder="0,00"></div></div>
     <div class="form-row"><div class="form-group"><label>Fornecedor</label><input type="text" id="est-fornecedor" placeholder="Nome do fornecedor"></div><div class="form-group"><label>Localização</label><input type="text" id="est-localizacao" placeholder="Ex: Prateleira A-3"></div></div>
     <div class="modal-actions"><button class="btn-secondary" onclick="fecharModalId('modal-estoque')">Cancelar</button><button class="btn-primary" onclick="salvarEstoque()">Salvar</button></div>
+  </div>
+</div>
+
+<!-- MODAL MOVIMENTAÇÃO DE ESTOQUE -->
+<div id="modal-mov-estoque" class="modal-bg" onclick="fecharModal(event,'modal-mov-estoque')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title" id="mov-est-title">Movimentar estoque</div>
+    <input type="hidden" id="mov-est-id">
+    <input type="hidden" id="mov-est-tipo">
+    <div id="mov-est-info" style="font-size:13px;color:var(--text2);margin-bottom:10px;"></div>
+    <div class="form-row">
+      <div class="form-group">
+        <label id="mov-est-qtd-label">Quantidade *</label>
+        <input type="number" id="mov-est-qtd" min="0" step="1" placeholder="0">
+      </div>
+      <div class="form-group">
+        <label>Motivo / observação</label>
+        <input type="text" id="mov-est-motivo" placeholder="Ex: Compra do fornecedor X">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="fecharModalId('modal-mov-estoque')">Cancelar</button>
+      <button class="btn-primary" onclick="confirmarMovEstoque()">Confirmar</button>
+    </div>
   </div>
 </div>
 
@@ -1655,6 +1887,10 @@ function _onRealtime(tabela,evento,registro){
   if(tabela==='veiculos'){atualizarKanban();atualizarVeiculos();atualizarDashboard();}
   if(tabela==='agenda'){renderAgendaSemana();atualizarAgendaLista();}
   if(tabela==='estoque'){atualizarEstoque();atualizarBadges();}
+  if(tabela==='estoque_movimentacoes'){
+    const histEl=document.getElementById('estoque-historico');
+    if(histEl && histEl.style.display!=='none') renderHistEstoque();
+  }
   if(tabela==='fila')atualizarFilaEspera();
   if(tabela==='notas'){}
 }
@@ -1784,7 +2020,7 @@ function atualizarKanban(){
     colEl.innerHTML=`<div class="kanban-col-header" style="color:${col.cor}">${esc(col.label)}<span class="kanban-col-count">${cards.length}</span></div><div id="kcol-${col.id}"></div>`;
     colEl.addEventListener('dragover',e=>{e.preventDefault();colEl.classList.add('drag-target');});
     colEl.addEventListener('dragleave',()=>colEl.classList.remove('drag-target'));
-    colEl.addEventListener('drop',e=>{e.preventDefault();colEl.classList.remove('drag-target');const vid=parseInt(e.dataTransfer.getData('text/plain'));moverKanban(vid,col.id);});
+    colEl.addEventListener('drop',e=>{e.preventDefault();colEl.classList.remove('drag-target');const vid=e.dataTransfer.getData('text/plain');moverKanban(vid,col.id);});
     board.appendChild(colEl);
     const colCards=colEl.querySelector('#kcol-'+col.id);
     cards.forEach(v=>{
@@ -1797,13 +2033,13 @@ function atualizarKanban(){
       const tel=(v.telefone||'').replace(/\D/g,'');
       let acoes='';
       if(col.id!=='entregue'){
-        acoes+=`<button class="kanban-btn" onclick="moverKanbanPrompt(${v.id})">→ Mover</button>`;
-        if(running)acoes+=`<button class="timer-btn stop" onclick="pararTimer(${v.id})">⏹</button>`;
-        else acoes+=`<button class="timer-btn play" onclick="iniciarTimer(${v.id})">▶</button>`;
+        acoes+=`<button class="kanban-btn" onclick="moverKanbanPrompt('${v.id}')">→ Mover</button>`;
+        if(running)acoes+=`<button class="timer-btn stop" onclick="pararTimer('${v.id}')">⏹</button>`;
+        else acoes+=`<button class="timer-btn play" onclick="iniciarTimer('${v.id}')">▶</button>`;
       }
       if(col.id==='pronto'&&tel)acoes+=`<a href="https://wa.me/55${tel}?text=${encodeURIComponent('Olá '+v.cliente+'! Seu veículo ('+v.placa+' - '+v.modelo+') está pronto para retirada! 😊')}" target="_blank" class="kanban-btn whatsapp">📲 WhatsApp</a>`;
-      if(col.id==='pronto')acoes+=`<button class="kanban-btn primary" onclick="abrirModalSaida(${v.id})">Registrar saída</button>`;
-      acoes+=`<button class="kanban-btn" onclick="abrirDetalhes(${v.id})">🔍</button>`;
+      if(col.id==='pronto')acoes+=`<button class="kanban-btn primary" onclick="abrirModalSaida('${v.id}')">Registrar saída</button>`;
+      acoes+=`<button class="kanban-btn" onclick="abrirDetalhes('${v.id}')">🔍</button>`;
       card.innerHTML=`<div><span class="kanban-card-placa">${esc(v.placa)}</span>${v.orcamentoStatus?` <span class="badge ${esc(v.orcamentoStatus)}" style="font-size:9px;">${esc(v.orcamentoStatus)}</span>`:''}</div>
         <div class="kanban-card-title">${esc(v.modelo)}${v.cor?' · '+esc(v.cor):''}</div>
         <div class="kanban-card-sub">${esc(v.cliente)} · ${esc(v.servico)}</div>
@@ -1841,7 +2077,7 @@ function iniciarTimer(vid){
   toast('Timer iniciado ▶','success');atualizarKanban();
   if(!window._tick)window._tick=setInterval(()=>{
     let algum=false;
-    Object.keys(timers).forEach(k=>{if(timers[k].running){algum=true;const el=document.getElementById('ktm-'+k);if(el){el.textContent='⏱ '+fmtSeg(getTimerAcum(parseInt(k)));el.className='timer-display running';}}});
+    Object.keys(timers).forEach(k=>{if(timers[k].running){algum=true;const el=document.getElementById('ktm-'+k);if(el){el.textContent='⏱ '+fmtSeg(getTimerAcum(k));el.className='timer-display running';}}});
     if(!algum){clearInterval(window._tick);window._tick=null;}
   },1000);
 }
@@ -1948,7 +2184,7 @@ function registrarEntrada(){
   if(tel&&!clientes.find(c=>(c.telefone||'').replace(/\D/g,'')===tel)){
     const novoCliente={nome:v.cliente,telefone:v.telefone,email:'',obs:''};
     clientes.push({id:'tmp_c_'+Date.now(),...novoCliente});
-    sbSalvarCliente(novoCliente).catch(()=>{});
+    sbSalvarCliente(novoCliente).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
   }
   sbSalvarVeiculo(v).then(novoId=>{v.id=novoId;DB.veiculos=veiculos;}).catch(e=>toast('Erro ao salvar OS: '+e.message,'error'));
   fecharModalId('modal-entrada');
@@ -1979,7 +2215,7 @@ function salvarVistoria(){
   v.vistoria={ts:new Date().toISOString(),by:session.username,km:parseInt(document.getElementById('vis-km').value)||null,combustivel:nivelComb,obs:document.getElementById('vis-obs').value.trim(),
     avarias:{arranhao:getChk('av-arranhao'),amassado:getChk('av-amassado'),vidro:getChk('av-vidro'),lataria:getChk('av-lataria'),espelho:getChk('av-espelho'),farol:getChk('av-farol'),parachoque:getChk('av-parachoque'),pneu:getChk('av-pneu')},
     itens:{estepe:getChk('it-estepe'),triangulo:getChk('it-triangulo'),extintor:getChk('it-extintor'),macaco:getChk('it-macaco'),radio:getChk('it-radio'),tapete:getChk('it-tapete'),calotas:getChk('it-calotas'),doc:getChk('it-doc')}};
-  sbSalvarVeiculo(v).catch(()=>{});fecharModalId('modal-vistoria');logAudit('vistoria',v.placa);toast('Vistoria salva','success');
+  sbSalvarVeiculo(v).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));fecharModalId('modal-vistoria');logAudit('vistoria',v.placa);toast('Vistoria salva','success');
 }
 function imprimirVistoria(){
   const v=visVeiculoId?veiculos.find(x=>x.id===visVeiculoId):null;
@@ -2032,7 +2268,7 @@ function atualizarSaidaFC(){
   if(lanca)info.innerHTML=config.autoReceita==='ask'?'Será perguntado se lançar '+fmtBRL(val)+' no FinControl.':'Será lançado '+fmtBRL(val)+' como <strong>entrada</strong> no FinControl.';
 }
 function confirmarSaida(){
-  const id=parseInt(document.getElementById('saida-id').value);
+  const id=document.getElementById('saida-id').value;
   const v=veiculos.find(x=>x.id===id);if(!v)return;
   const valor=parseFloat(document.getElementById('saida-valor').value)||0;
   const pgto=document.getElementById('saida-pgto').value;
@@ -2053,9 +2289,9 @@ function confirmarSaida(){
   }
   if(lanca){
     const lanc={tipo:'entrada',descricao:'Serviço — '+v.modelo+' ('+v.placa+') — '+v.cliente,valor,categoria:config.catServico,data:v.saida.data,obs:v.servico+' · '+pgto+(obs?' · '+obs:'')};
-    sbSalvarLancamento(lanc).then(r=>{if(r)DB.lancamentos.unshift(r);}).catch(()=>{});
+    sbSalvarLancamento(lanc).then(r=>{if(r)DB.lancamentos.unshift(r);}).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
   }
-  sbSalvarVeiculo(v).catch(()=>{});
+  sbSalvarVeiculo(v).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
   fecharModalId('modal-saida');logAudit('saida',`${v.placa} - ${fmtBRL(valor)} - ${pgto}`);
   toast('Saída registrada'+(lanca?' e lançada no FinControl':''),'success');
   atualizarVeiculos();atualizarDashboard();atualizarKanban();
@@ -2075,7 +2311,7 @@ function abrirDetalhes(id){
     <tr><td style="color:var(--text3);">Kanban</td><td><span class="badge ${v.kanbanStatus||'aguardando'}">${kanbanLabel(v.kanbanStatus)}</span></td></tr>
     <tr><td style="color:var(--text3);">Orçamento</td><td>${v.orcamento?fmtBRL(v.orcamento)+' <span class="badge '+(v.orcamentoStatus||'pendente')+'">'+esc(v.orcamentoStatus||'pendente')+'</span>':'-'}</td></tr>
     <tr><td style="color:var(--text3);">Descrição</td><td>${esc(v.descricao||'-')}</td></tr>
-    <tr><td style="color:var(--text3);">Entrada</td><td>${fmtData(v.dataEntrada)} às ${v.horaEntrada} (por ${esc(v.registradoPor)})</td></tr>
+    <tr><td style="color:var(--text3);">Entrada</td><td>${fmtData(v.dataEntrada)} às ${v.horaEntrada} (por ${esc(v.registradoPor)})${podeEditarDataEntrada()?` <button class="btn-sm" style="margin-left:8px;" onclick="abrirEditarDataEntrada('${v.id}')">✏️ Alterar data</button>`:''}</td></tr>
     <tr><td style="color:var(--text3);">Tempo trabalhado</td><td>${v.tempoTrabalhado?fmtSeg(v.tempoTrabalhado):'-'}</td></tr>
     ${v.vistoria?`<tr><td style="color:var(--text3);">Vistoria</td><td><span class="badge ok">Realizada</span> Km:${v.vistoria.km||'-'} Comb:${v.vistoria.combustivel!==null?v.vistoria.combustivel+'%':'-'}</td></tr>`:''}
     ${v.saida?`
@@ -2086,10 +2322,62 @@ function abrirDetalhes(id){
     <tr><td style="color:var(--text3);">FinControl</td><td>${v.saida.fcLancId?'<span class="badge pago">Lançado</span>':'<span class="badge fechado">Não lançado</span>'}</td></tr>
     `:`<tr><td style="color:var(--text3);">Status</td><td><span class="badge no-patio">No pátio há ${fmtMin(tempo)}</span></td></tr>`}
   </table>
-  ${!v.saida?`<button class="btn-primary" onclick="fecharModalId('modal-detalhes');abrirModalSaida(${v.id})">Registrar saída</button> `:''}
-  <button class="btn-secondary" onclick="imprimirOS(${v.id})">🖨️ OS</button>
+  ${!v.saida?`<button class="btn-primary" onclick="fecharModalId('modal-detalhes');abrirModalSaida('${v.id}')">Registrar saída</button> `:''}
+  <button class="btn-secondary" onclick="imprimirOS('${v.id}')">🖨️ OS</button>
   ${v.saida?` <button class="btn-secondary" onclick="document.getElementById('saida-id').value=${v.id};imprimirRecibo()">🖨️ Recibo</button>`:''}`;
   document.getElementById('modal-detalhes').classList.add('show');
+}
+
+// ─── Alterar data/hora de entrada (somente dono/sócio) ───
+function abrirEditarDataEntrada(id){
+  if(!podeEditarDataEntrada()){
+    toast(somenteDono()
+      ? 'Alteração de data de entrada está desativada nas configurações'
+      : 'Apenas dono e sócio podem alterar a data de entrada','error');
+    return;
+  }
+  const v=veiculos.find(x=>x.id===id);
+  if(!v){toast('Veículo não encontrado','error');return;}
+  document.getElementById('edit-entrada-id').value=id;
+  document.getElementById('edit-entrada-data').value=v.dataEntrada||hojeISO();
+  document.getElementById('edit-entrada-hora').value=v.horaEntrada||agoraHM();
+  document.getElementById('edit-entrada-motivo').value='';
+  document.getElementById('edit-entrada-info').innerHTML=
+    `<strong>${esc(v.placa)}</strong> · ${esc(v.modelo)} · ${esc(v.cliente)}<br>
+     Entrada atual: <span class="mono">${fmtData(v.dataEntrada)} ${v.horaEntrada}</span>`;
+  fecharModalId('modal-detalhes');
+  document.getElementById('modal-edit-entrada').classList.add('show');
+}
+async function salvarEditarDataEntrada(){
+  if(!podeEditarDataEntrada()){toast('Sem permissão','error');return;}
+  const id=document.getElementById('edit-entrada-id').value;
+  const novaData=document.getElementById('edit-entrada-data').value;
+  const novaHora=document.getElementById('edit-entrada-hora').value;
+  const motivo=document.getElementById('edit-entrada-motivo').value.trim();
+  if(!novaData||!novaHora){toast('Preencha data e hora','error');return;}
+  const v=veiculos.find(x=>x.id===id);
+  if(!v){toast('Veículo não encontrado','error');return;}
+  // Validação: nova data não pode ser depois da saída (se houver)
+  if(v.saida && (novaData+'T'+novaHora) > (v.saida.data+'T'+v.saida.hora)){
+    toast('Data de entrada não pode ser posterior à saída registrada','error');return;
+  }
+  if(novaData===v.dataEntrada && novaHora===v.horaEntrada){
+    fecharModalId('modal-edit-entrada');return;
+  }
+  const antiga=`${v.dataEntrada} ${v.horaEntrada}`;
+  const btn=document.querySelector('#modal-edit-entrada .btn-primary');
+  await withLock('edit-entrada-'+id, async()=>{
+    await safeOp('Erro ao alterar data de entrada', async()=>{
+      const veicAtualizado={...v, dataEntrada:novaData, horaEntrada:novaHora};
+      await sbSalvarVeiculo(veicAtualizado);
+      v.dataEntrada=novaData; v.horaEntrada=novaHora;
+      logAudit('alterar-data-entrada',
+        `${v.placa} · ${antiga} → ${novaData} ${novaHora}${motivo?' — '+motivo:''} (por ${session.username})`);
+      fecharModalId('modal-edit-entrada');
+      atualizarVeiculos(); atualizarKanban(); atualizarDashboard();
+      toast('Data de entrada alterada','success');
+    },{btn});
+  });
 }
 
 function setHistFiltro(f,btn){histFiltro=f;document.querySelectorAll('#panel-veiculos .filter-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');atualizarHistorico();}
@@ -2108,7 +2396,7 @@ function atualizarHistorico(){
       <td class="mono" style="font-size:12px;">${fmtData(v.dataEntrada)} ${v.horaEntrada}</td>
       <td class="mono" style="font-size:12px;">${v.saida?fmtData(v.saida.data)+' '+v.saida.hora:'-'}</td>
       <td class="mono" style="font-size:12px;">${v.saida&&v.saida.valor?fmtBRL(v.saida.valor):'-'}</td>
-      <td style="text-align:right;white-space:nowrap;"><button class="btn-edit" onclick="abrirDetalhes(${v.id})">Detalhes</button>${!v.saida?`<button class="btn-saida" onclick="abrirModalSaida(${v.id})">Saída</button><button class="btn-cancel-os" onclick="abrirCancelarOS(${v.id})" title="Cancelar OS">✕</button>`:''}</td>
+      <td style="text-align:right;white-space:nowrap;"><button class="btn-edit" onclick="abrirDetalhes('${v.id}')">Detalhes</button>${!v.saida?`<button class="btn-saida" onclick="abrirModalSaida('${v.id}')">Saída</button><button class="btn-cancel-os" onclick="abrirCancelarOS('${v.id}')" title="Cancelar OS">✕</button>`:''}</td>
     </tr>`).join('')}</tbody></table>`;
 }
 function atualizarVeiculos(){
@@ -2131,7 +2419,7 @@ function atualizarVeiculos(){
         <td><span class="badge ${v.kanbanStatus||'aguardando'}" style="font-size:9px;">${kanbanLabel(v.kanbanStatus)}</span></td>
         <td class="mono" style="font-size:12px;">${fmtData(v.dataEntrada)} ${v.horaEntrada}</td>
         <td class="mono" style="font-size:12px;">${fmtMin(t)}</td>
-        <td style="text-align:right;white-space:nowrap;"><button class="btn-edit" onclick="abrirDetalhes(${v.id})">Detalhes</button><button class="btn-saida" onclick="abrirModalSaida(${v.id})">Registrar saída</button><button class="btn-cancel-os" onclick="abrirCancelarOS(${v.id})" title="Cancelar / Excluir OS">✕</button></td>
+        <td style="text-align:right;white-space:nowrap;"><button class="btn-edit" onclick="abrirDetalhes('${v.id}')">Detalhes</button><button class="btn-saida" onclick="abrirModalSaida('${v.id}')">Registrar saída</button><button class="btn-cancel-os" onclick="abrirCancelarOS('${v.id}')" title="Cancelar / Excluir OS">✕</button></td>
       </tr>`;
     }).join('')}</tbody></table>`;
   atualizarHistorico();
@@ -2140,7 +2428,7 @@ function atualizarVeiculos(){
 
 /* ============ IMPRESSÃO ============ */
 function imprimirRecibo(){
-  const id=parseInt(document.getElementById('saida-id').value);
+  const id=document.getElementById('saida-id').value;
   const v=veiculos.find(x=>x.id===id);
   const valor=v&&v.saida?v.saida.valor:(parseFloat(document.getElementById('saida-valor')?.value)||0);
   const pgto=v&&v.saida?v.saida.pgto:(document.getElementById('saida-pgto')?.value||'');
@@ -2217,7 +2505,7 @@ function renderAgendaSemana(){
     return`<div class="agenda-day ${iso===hoje?'today':''}">
       <div class="agenda-day-header">${nomes[d.getDay()]}</div>
       <div class="agenda-day-num">${pad(d.getDate())}</div>
-      ${agsDia.map(a=>`<div class="agenda-item-chip" onclick="editAgendamento(${a.id})" title="${esc(a.cliente)}">${a.hora} ${esc(a.cliente.split(' ')[0])}</div>`).join('')}
+      ${agsDia.map(a=>`<div class="agenda-item-chip" onclick="editAgendamento('${a.id}')" title="${esc(a.cliente)}">${a.hora} ${esc(a.cliente.split(' ')[0])}</div>`).join('')}
       ${!agsDia.length?'<div style="font-size:10px;color:var(--text3);text-align:center;margin-top:4px;">livre</div>':''}
     </div>`;
   }).join('');
@@ -2237,9 +2525,9 @@ function atualizarAgendaLista(){
         <td><span class="badge servico">${esc(a.servico||'')}</span></td>
         <td><span class="badge ${pass?'fechado':'aberto'}">${pass?'Passado':'Agendado'}</span></td>
         <td style="text-align:right;white-space:nowrap;">
-          <button class="btn-edit" onclick="editAgendamento(${a.id})">Editar</button>
-          <button class="btn-danger" onclick="delAgendamento(${a.id})">Excluir</button>
-          ${!pass?`<button class="btn-pay" style="font-size:11px;" onclick="converterAgOS(${a.id})">→ OS</button>`:''}
+          <button class="btn-edit" onclick="editAgendamento('${a.id}')">Editar</button>
+          <button class="btn-danger" onclick="delAgendamento('${a.id}')">Excluir</button>
+          ${!pass?`<button class="btn-pay" style="font-size:11px;" onclick="converterAgOS('${a.id}')">→ OS</button>`:''}
         </td>
       </tr>`;
     }).join('')}</tbody></table>`;
@@ -2264,28 +2552,59 @@ function editAgendamento(id){
   document.getElementById('ag-obs').value=a.obs||'';
   document.getElementById('modal-agendamento').classList.add('show');
 }
-function salvarAgendamento(){
+async function salvarAgendamento(){
   const cliente=document.getElementById('ag-cliente').value.trim();
   const data=document.getElementById('ag-data').value;
   const hora=document.getElementById('ag-hora').value;
   if(!cliente||!data||!hora){toast('Preencha cliente, data e horário','error');return;}
-  const noPatio=veiculos.filter(v=>!v.saida).length;
-  if(noPatio>=(config.capacidade||20)&&!confirm(`Pátio na capacidade máxima (${config.capacidade} vag.). Continuar?`))return;
+  // Validação: data não pode ser passada (exceto edição)
   const id=document.getElementById('ag-id').value;
-  const dados={cliente,tel:document.getElementById('ag-tel').value.trim(),placa:(document.getElementById('ag-placa').value||'').toUpperCase().trim(),modelo:document.getElementById('ag-modelo').value.trim(),servico:document.getElementById('ag-servico').value,data,hora,duracao:parseInt(document.getElementById('ag-duracao').value)||120,obs:document.getElementById('ag-obs').value.trim()};
-  if(id){
-    const i=agenda.findIndex(x=>x.id===id);
-    if(i>=0)agenda[i]={...agenda[i],...dados};
-    sbSalvarAgenda({id,...dados}).catch(()=>{});
-  } else {
-    const tmp={id:'tmp_ag_'+Date.now(),...dados};
-    agenda.push(tmp);
-    sbSalvarAgenda(dados).then(r=>{if(r)tmp.id=r.id;}).catch(()=>{});
+  if(!id && data < hojeISO()){
+    if(!confirmarAcao('A data selecionada já passou. Deseja agendar mesmo assim?'))return;
   }
-  fecharModalId('modal-agendamento');logAudit('agendamento',`${cliente} - ${data} ${hora}`);toast('Agendamento salvo','success');
-  renderAgendaSemana();atualizarAgendaLista();atualizarDashboard();
+  const duracao=parseInt(document.getElementById('ag-duracao').value)||120;
+  // Detecta conflito de horário (overlap)
+  const ini=new Date(`${data}T${hora}:00`).getTime();
+  const fim=ini+duracao*60000;
+  const conflito=agenda.find(a=>{
+    if(a.id===id)return false;
+    if(a.data!==data)return false;
+    const ai=new Date(`${a.data}T${a.hora}:00`).getTime();
+    const af=ai+(a.duracao||120)*60000;
+    return ini<af && fim>ai;
+  });
+  if(conflito && !confirmarAcao(`Conflito de horário com agendamento de ${conflito.cliente} (${conflito.hora}). Continuar?`))return;
+  const noPatio=veiculos.filter(v=>!v.saida).length;
+  if(noPatio>=(config.capacidade||20)&&!confirmarAcao(`Pátio na capacidade máxima (${config.capacidade} vag.). Continuar?`))return;
+  const dados={cliente,tel:document.getElementById('ag-tel').value.trim(),placa:(document.getElementById('ag-placa').value||'').toUpperCase().trim(),modelo:document.getElementById('ag-modelo').value.trim(),servico:document.getElementById('ag-servico').value,data,hora,duracao,obs:document.getElementById('ag-obs').value.trim()};
+  const btn=document.querySelector('#modal-agendamento .btn-primary');
+  await withLock('salvar-agenda-'+(id||'novo'), async()=>{
+    await safeOp('Erro ao salvar agendamento', async()=>{
+      if(id){
+        await sbSalvarAgenda({id,...dados});
+        const i=agenda.findIndex(x=>x.id===id);
+        if(i>=0)agenda[i]={...agenda[i],...dados};
+      } else {
+        const r=await sbSalvarAgenda(dados);
+        if(r)agenda.push(r);
+      }
+      fecharModalId('modal-agendamento');
+      logAudit('agendamento',`${cliente} - ${data} ${hora}`);
+      toast('Agendamento salvo','success');
+      renderAgendaSemana();atualizarAgendaLista();atualizarDashboard();
+    },{btn});
+  });
 }
-function delAgendamento(id){if(!confirm('Excluir agendamento?'))return;agenda=agenda.filter(x=>x.id!==id);sbExcluirAgenda(id).catch(()=>{});renderAgendaSemana();atualizarAgendaLista();toast('Agendamento excluído');}
+async function delAgendamento(id){
+  const a=agenda.find(x=>x.id===id);
+  if(!confirmarAcao(`Excluir agendamento${a?` de ${a.cliente}`:''}?`))return;
+  await safeOp('Erro ao excluir agendamento', async()=>{
+    await sbExcluirAgenda(id);
+    agenda=agenda.filter(x=>x.id!==id);
+    renderAgendaSemana(); atualizarAgendaLista();
+    toast('Agendamento excluído','success');
+  });
+}
 function converterAgOS(id){
   const a=agenda.find(x=>x.id===id);if(!a)return;
   fecharModalId('modal-agendamento');popularSelects();orcItens=[];renderOrcItens();nivelComb=null;
@@ -2309,22 +2628,43 @@ function editCliente(id){
   document.getElementById('cli-email').value=c.email||'';document.getElementById('cli-doc').value=c.doc||'';document.getElementById('cli-obs').value=c.obs||'';
   document.getElementById('modal-cliente').classList.add('show');
 }
-function salvarCliente(){
+async function salvarCliente(){
   const id=document.getElementById('cliente-id').value;
-  const nome=document.getElementById('cli-nome').value.trim();if(!nome){toast('Informe o nome','error');return;}
-  const dados={nome,telefone:document.getElementById('cli-tel').value.trim(),email:document.getElementById('cli-email').value.trim(),doc:document.getElementById('cli-doc').value.trim(),obs:document.getElementById('cli-obs').value.trim()};
-  if(id){
-    const i=clientes.findIndex(x=>x.id===id);
-    if(i>=0)clientes[i]={...clientes[i],...dados};
-    sbSalvarCliente({id,...dados}).catch(()=>{});
-  } else {
-    const tmp={id:'tmp_cli_'+Date.now(),...dados};
-    clientes.push(tmp);
-    sbSalvarCliente(dados).then(r=>{if(r)tmp.id=r.id;}).catch(()=>{});
+  const nome=document.getElementById('cli-nome').value.trim();
+  if(!nome){toast('Informe o nome','error');return;}
+  const tel=document.getElementById('cli-tel').value.trim();
+  // Verifica duplicidade por telefone (apenas em cadastro novo)
+  if(!id && tel){
+    const dup=clientes.find(c=>(c.telefone||'').replace(/\D/g,'')===tel.replace(/\D/g,'') && tel.length>=8);
+    if(dup && !confirmarAcao(`Já existe cliente "${dup.nome}" com este telefone. Cadastrar mesmo assim?`))return;
   }
-  fecharModalId('modal-cliente');atualizarClientes();atualizarBadges();toast('Cliente salvo','success');
+  const dados={nome,telefone:tel,email:document.getElementById('cli-email').value.trim(),doc:document.getElementById('cli-doc').value.trim(),obs:document.getElementById('cli-obs').value.trim()};
+  const btn=document.querySelector('#modal-cliente .btn-primary');
+  await withLock('salvar-cliente-'+(id||'novo'), async()=>{
+    await safeOp('Erro ao salvar cliente', async()=>{
+      if(id){
+        await sbSalvarCliente({id,...dados});
+        const i=clientes.findIndex(x=>x.id===id);
+        if(i>=0)clientes[i]={...clientes[i],...dados};
+      } else {
+        const r=await sbSalvarCliente(dados);
+        if(r)clientes.push(r);
+      }
+      fecharModalId('modal-cliente');atualizarClientes();atualizarBadges();
+      toast('Cliente salvo','success');
+    },{btn});
+  });
 }
-function delCliente(id){const c=clientes.find(x=>x.id===id);if(!c)return;if(!confirm(`Excluir "${c.nome}"?`))return;clientes=clientes.filter(x=>x.id!==id);sbExcluirCliente(id).catch(()=>{});atualizarClientes();toast('Cliente excluído');}
+async function delCliente(id){
+  const c=clientes.find(x=>x.id===id);if(!c)return;
+  if(!confirmarAcao(`Excluir o cliente "${c.nome}"?\n\nVeículos vinculados ficarão sem cliente associado.`))return;
+  await safeOp('Erro ao excluir cliente', async()=>{
+    await sbExcluirCliente(id);
+    clientes=clientes.filter(x=>x.id!==id);
+    atualizarClientes();
+    toast('Cliente excluído','success');
+  });
+}
 function atualizarClientes(){
   const lim=Date.now()-90*24*60*60*1000;
   const semRet=clientes.filter(c=>{
@@ -2347,7 +2687,7 @@ function atualizarClientes(){
         <td style="font-size:12px;color:var(--text3);">${esc(c.doc||'-')}</td>
         <td style="font-size:12px;">${placas.slice(0,3).map(p=>`<span class="placa" style="font-size:10px;">${esc(p)}</span>`).join(' ')} (${os.length})</td>
         <td style="font-size:12px;">${os[0]?fmtData(os[0].dataEntrada):'-'}</td>
-        <td style="text-align:right;white-space:nowrap;"><button class="btn-edit" onclick="verHistCliente(${c.id})">Histórico</button><button class="btn-sm" onclick="editCliente(${c.id})">Editar</button><button class="btn-danger" onclick="delCliente(${c.id})">Excluir</button></td>
+        <td style="text-align:right;white-space:nowrap;"><button class="btn-edit" onclick="verHistCliente('${c.id}')">Histórico</button><button class="btn-sm" onclick="editCliente('${c.id}')">Editar</button><button class="btn-danger" onclick="delCliente('${c.id}')">Excluir</button></td>
       </tr>`;
     }).join('')}</tbody></table>`;
 }
@@ -2368,64 +2708,228 @@ function verHistCliente(id){
 }
 
 /* ============ ESTOQUE ============ */
-function abrirModalEstoque(){document.getElementById('modal-est-title').textContent='Nova peça';document.getElementById('est-id').value='';['est-nome','est-codigo','est-fornecedor','est-localizacao'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});['est-qtd','est-minimo','est-preco'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});document.getElementById('modal-estoque').classList.add('show');}
+function abrirModalEstoque(){document.getElementById('modal-est-title').textContent='Novo material';document.getElementById('est-id').value='';['est-nome','est-codigo','est-fornecedor','est-localizacao'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});['est-qtd','est-minimo','est-preco'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});document.getElementById('modal-estoque').classList.add('show');}
 function editEstoque(id){
   const p=estoque.find(x=>x.id===id);if(!p)return;
-  document.getElementById('modal-est-title').textContent='Editar peça';document.getElementById('est-id').value=p.id;
+  document.getElementById('modal-est-title').textContent='Editar material';document.getElementById('est-id').value=p.id;
   document.getElementById('est-nome').value=p.nome||'';document.getElementById('est-codigo').value=p.codigo||'';
   document.getElementById('est-qtd').value=p.qtd||0;document.getElementById('est-minimo').value=p.minimo||0;
   document.getElementById('est-preco').value=p.preco||'';document.getElementById('est-fornecedor').value=p.fornecedor||'';
   document.getElementById('est-localizacao').value=p.localizacao||'';document.getElementById('modal-estoque').classList.add('show');
 }
-function salvarEstoque(){
+// Lock anti-duplo-clique para salvar material
+let _salvandoEstoque = false;
+async function salvarEstoque(){
+  if(_salvandoEstoque) return;
   const id=document.getElementById('est-id').value;
-  const nome=document.getElementById('est-nome').value.trim();if(!nome){toast('Informe o nome','error');return;}
+  const nome=document.getElementById('est-nome').value.trim();
+  if(!nome){toast('Informe o nome','error');return;}
   const qtd=parseInt(document.getElementById('est-qtd').value)||0;
   const minimo=parseInt(document.getElementById('est-minimo').value)||0;
   const preco=parseFloat(document.getElementById('est-preco').value)||0;
-  const dados={nome,codigo:document.getElementById('est-codigo').value.trim(),qtd,minimo,preco,fornecedor:document.getElementById('est-fornecedor').value.trim(),localizacao:document.getElementById('est-localizacao').value.trim()};
-  if(id){
-    const i=estoque.findIndex(x=>x.id===id);
-    if(i>=0){
-      const oldQtd=estoque[i].qtd||estoque[i].quantidade||0;
-      estoque[i]={...estoque[i],...dados};
-      if(qtd>oldQtd&&preco>0){
-        const diff=qtd-oldQtd,val=diff*preco;
-        sbSalvarLancamento({tipo:'saida',descricao:'Compra peças — '+nome+' x'+diff,valor:val,categoria:config.catPecas||'Compra de peças',data:hojeISO()}).catch(()=>{});
-        toast('Compra lançada no FinControl: '+fmtBRL(val),'success');
+  if(qtd<0||minimo<0||preco<0){toast('Valores não podem ser negativos','error');return;}
+  const cadastro={nome,
+    codigo:document.getElementById('est-codigo').value.trim(),
+    minimo, preco,
+    fornecedor:document.getElementById('est-fornecedor').value.trim(),
+    localizacao:document.getElementById('est-localizacao').value.trim()};
+  const btn=document.querySelector('#modal-estoque .btn-primary');
+  const txtOld=btn?.textContent;
+  if(btn){btn.disabled=true; btn.textContent='Salvando…';}
+  _salvandoEstoque=true;
+  try{
+    if(id){
+      // Edição: atualiza só metadados (qtd só muda via movimentação)
+      await sbSalvarEstoque({id,...cadastro});
+      const i=estoque.findIndex(x=>x.id===id);
+      if(i>=0) estoque[i]={...estoque[i],...cadastro};
+      toast('Material atualizado','success');
+    } else {
+      // Cadastro novo: cria com qtd=0, depois movimenta entrada se qtd>0
+      const novo=await sbSalvarEstoque({...cadastro,qtd:0});
+      estoque.push(novo);
+      if(qtd>0){
+        const mov=await adicionarEstoque(novo.id, qtd, 'Cadastro inicial');
+        novo.qtd=mov.saldo_depois;
+        if(preco>0){
+          await sbSalvarLancamento({tipo:'saida',
+            descricao:'Compra material — '+nome+' x'+qtd,
+            valor:qtd*preco,
+            categoria:config.catPecas||'Compra de peças',
+            data:hojeISO()});
+          toast('Compra lançada no FinControl: '+fmtBRL(qtd*preco),'success');
+        }
       }
-      sbSalvarEstoque({id,...dados}).catch(()=>{});
+      toast('Material salvo','success');
     }
-  } else {
-    const tmp={id:'tmp_est_'+Date.now(),...dados};
-    estoque.push(tmp);
-    if(qtd>0&&preco>0){
-      sbSalvarLancamento({tipo:'saida',descricao:'Compra peças — '+nome+' x'+qtd,valor:qtd*preco,categoria:config.catPecas||'Compra de peças',data:hojeISO()}).catch(()=>{});
-    }
-    sbSalvarEstoque(dados).then(r=>{if(r)tmp.id=r.id;}).catch(()=>{});
+    fecharModalId('modal-estoque');
+    atualizarEstoque(); atualizarBadges();
+  }catch(e){
+    toast('Erro ao salvar: '+(e.friendlyMessage||e.message),'error');
+  }finally{
+    _salvandoEstoque=false;
+    if(btn){btn.disabled=false; btn.textContent=txtOld;}
   }
-  fecharModalId('modal-estoque');atualizarEstoque();atualizarBadges();toast('Peça salva','success');
 }
-function delEstoque(id){const p=estoque.find(x=>x.id===id);if(!p)return;if(!confirm(`Excluir "${p.nome}"?`))return;estoque=estoque.filter(x=>x.id!==id);db.from('estoque').delete().eq('id',id).then(()=>{}).catch(()=>{});atualizarEstoque();atualizarBadges();toast('Peça excluída');}
+function delEstoque(id){
+  const p=estoque.find(x=>x.id===id);if(!p)return;
+  if(!confirm(`Excluir "${p.nome}"?`))return;
+  handle(db.from('estoque').delete().eq('id',id)).then(()=>{
+    estoque=estoque.filter(x=>x.id!==id);
+    atualizarEstoque();atualizarBadges();toast('Material excluído','success');
+  }).catch(e=>toast('Erro ao excluir: '+(e.friendlyMessage||e.message),'error'));
+}
+// ─── Movimentação de estoque (modal) ───────────────────────
+let _movEstoqueLock=false;
+function abrirModalMov(id, tipo){
+  const p=estoque.find(x=>x.id===id);
+  if(!p){toast('Material não encontrado','error');return;}
+  document.getElementById('mov-est-id').value=id;
+  document.getElementById('mov-est-tipo').value=tipo;
+  const titulos={entrada:'Entrada de material',saida:'Saída de material',ajuste:'Ajuste de saldo'};
+  const labels ={entrada:'Quantidade a adicionar *',saida:'Quantidade a retirar *',ajuste:'Novo saldo absoluto *'};
+  document.getElementById('mov-est-title').textContent=titulos[tipo];
+  document.getElementById('mov-est-qtd-label').textContent=labels[tipo];
+  document.getElementById('mov-est-info').innerHTML=
+    `<strong>${esc(p.nome)}</strong> · saldo atual: <span class="mono">${Number(p.qtd)||0}</span>${p.minimo?` · mínimo: <span class="mono">${p.minimo}</span>`:''}`;
+  document.getElementById('mov-est-qtd').value = tipo==='ajuste' ? (Number(p.qtd)||0) : '';
+  document.getElementById('mov-est-motivo').value='';
+  document.getElementById('modal-mov-estoque').classList.add('show');
+  setTimeout(()=>document.getElementById('mov-est-qtd').focus(),50);
+}
+async function confirmarMovEstoque(){
+  if(_movEstoqueLock) return;
+  const id=document.getElementById('mov-est-id').value;
+  const tipo=document.getElementById('mov-est-tipo').value;
+  const qtd=parseFloat(document.getElementById('mov-est-qtd').value);
+  const motivo=document.getElementById('mov-est-motivo').value.trim();
+  if(isNaN(qtd)||qtd<0){toast('Quantidade inválida','error');return;}
+  if(tipo!=='ajuste' && qtd===0){toast('Quantidade deve ser maior que zero','error');return;}
+  const p=estoque.find(x=>x.id===id);
+  if(!p){toast('Material não encontrado','error');return;}
+  if(tipo==='saida' && qtd>(Number(p.qtd)||0)){
+    if(!confirm(`Saldo insuficiente (${p.qtd} disponível, ${qtd} solicitado). A operação será rejeitada pelo servidor. Deseja tentar mesmo assim?`)) return;
+  }
+  const btn=document.querySelector('#modal-mov-estoque .btn-primary');
+  const old=btn.textContent; btn.disabled=true; btn.textContent='Processando…';
+  _movEstoqueLock=true;
+  try{
+    const fn=tipo==='entrada'?adicionarEstoque:tipo==='saida'?removerEstoque:ajustarEstoque;
+    const res=await fn(id, qtd, motivo);
+    p.qtd=res.saldo_depois;
+    fecharModalId('modal-mov-estoque');
+    atualizarEstoque(); atualizarBadges();
+    if(document.getElementById('estoque-historico').style.display!=='none') renderHistEstoque();
+    toast(`${tipo==='entrada'?'Entrada':tipo==='saida'?'Saída':'Ajuste'} registrado · saldo: ${res.saldo_depois}`,'success');
+    logAudit('estoque-'+tipo, `${p.nome} · ${tipo==='ajuste'?'novo saldo '+res.saldo_depois:'qtd '+qtd}${motivo?' — '+motivo:''}`);
+  }catch(e){
+    toast('Erro: '+(e.friendlyMessage||e.message),'error');
+  }finally{
+    _movEstoqueLock=false; btn.disabled=false; btn.textContent=old;
+  }
+}
+
+// ─── Histórico de movimentações ────────────────────────────
+function toggleHistEstoque(){
+  const el=document.getElementById('estoque-historico');
+  if(el.style.display==='none'){el.style.display='block';renderHistEstoque();}
+  else el.style.display='none';
+}
+async function renderHistEstoque(){
+  const el=document.getElementById('estoque-historico');
+  el.innerHTML='<div class="empty">Carregando histórico…</div>';
+  try{
+    const movs=await sbCarregarMovimentacoes(null, 100);
+    if(!movs.length){el.innerHTML='<div class="empty">Nenhuma movimentação registrada</div>';return;}
+    const mapEst={}; estoque.forEach(p=>mapEst[p.id]=p.nome);
+    const rotulo={entrada:'Entrada',saida:'Saída',ajuste:'Ajuste'};
+    const cor   ={entrada:'var(--green)',saida:'var(--red)',ajuste:'var(--blue)'};
+    el.innerHTML=`<div style="font-weight:600;margin-bottom:8px;">📜 Últimas 100 movimentações</div>
+      <table class="table"><thead><tr><th>Data/Hora</th><th>Material</th><th>Tipo</th><th>Qtd</th><th>Antes → Depois</th><th>Motivo</th></tr></thead>
+      <tbody>${movs.map(m=>`<tr>
+        <td class="mono" style="font-size:11px;">${new Date(m.criado_em).toLocaleString('pt-BR')}</td>
+        <td>${esc(mapEst[m.estoque_id]||'(removido)')}</td>
+        <td><span class="badge" style="background:${cor[m.tipo]};color:#fff;">${rotulo[m.tipo]}</span></td>
+        <td class="mono">${m.quantidade}</td>
+        <td class="mono" style="font-size:12px;">${m.saldo_antes} → ${m.saldo_depois}</td>
+        <td style="font-size:12px;color:var(--text3);">${esc(m.motivo||'-')}</td>
+      </tr>`).join('')}</tbody></table>`;
+  }catch(e){
+    el.innerHTML=`<div class="empty">Erro ao carregar: ${esc(e.friendlyMessage||e.message)}</div>`;
+  }
+}
+
+let estFiltro='todos';
+function setEstFiltro(f,btn){
+  estFiltro=f;
+  document.querySelectorAll('[data-est-filtro]').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  atualizarEstoque();
+}
+function _nivelEstoque(p){
+  const min=Number(p.minimo)||0; const qtd=Number(p.qtd)||0;
+  if(qtd<=0) return {st:'zerado',pct:0,cor:'var(--red)'};
+  if(qtd<=min) return {st:'critico',pct:Math.min(100,(qtd/(min||1))*100),cor:'var(--red)'};
+  if(qtd<=min*1.5) return {st:'baixo',pct:Math.min(100,(qtd/(min*2||1))*100),cor:'var(--orange)'};
+  return {st:'ok',pct:100,cor:'var(--green)'};
+}
 function atualizarEstoque(){
-  const crit=estoque.filter(p=>p.qtd<=p.minimo);
+  const crit=estoque.filter(p=>(Number(p.qtd)||0)<=(Number(p.minimo)||0));
   document.getElementById('est-total').textContent=estoque.length;
-  document.getElementById('est-valor').textContent=fmtBRL(estoque.reduce((s,p)=>s+p.qtd*(p.preco||0),0));
+  document.getElementById('est-valor').textContent=fmtBRL(estoque.reduce((s,p)=>s+(Number(p.qtd)||0)*(Number(p.preco)||0),0));
   document.getElementById('est-criticos').textContent=crit.length;
   const al=document.getElementById('estoque-alerta');
-  if(crit.length){al.classList.add('show');al.innerHTML=`⚠️ <strong>${crit.length} peça(s) abaixo do mínimo:</strong> ${crit.map(p=>esc(p.nome)+' (qtd:'+p.qtd+', mín:'+p.minimo+')').join(' · ')}`;}
+  if(crit.length){al.classList.add('show');al.innerHTML=`⚠️ <strong>${crit.length} material(is) abaixo do mínimo:</strong> ${crit.map(p=>esc(p.nome)+' (qtd:'+(p.qtd||0)+', mín:'+(p.minimo||0)+')').join(' · ')}`;}
   else al.classList.remove('show');
+
+  // Filtro + busca + ordenação
+  const busca=(document.getElementById('est-busca')?.value||'').toLowerCase().trim();
+  const ordem=document.getElementById('est-ordem')?.value||'nome';
+  let lista=[...estoque];
+  if(estFiltro==='criticos') lista=lista.filter(p=>(Number(p.qtd)||0)<=(Number(p.minimo)||0));
+  else if(estFiltro==='ok')  lista=lista.filter(p=>(Number(p.qtd)||0)>(Number(p.minimo)||0));
+  if(busca) lista=lista.filter(p=>
+    (p.nome||'').toLowerCase().includes(busca) ||
+    (p.codigo||'').toLowerCase().includes(busca) ||
+    (p.fornecedor||'').toLowerCase().includes(busca));
+  const ord={
+    nome:(a,b)=>(a.nome||'').localeCompare(b.nome||''),
+    qtd:(a,b)=>(Number(b.qtd)||0)-(Number(a.qtd)||0),
+    valor:(a,b)=>((Number(b.qtd)||0)*(Number(b.preco)||0))-((Number(a.qtd)||0)*(Number(a.preco)||0)),
+    status:(a,b)=>((Number(a.qtd)||0)-(Number(a.minimo)||0))-((Number(b.qtd)||0)-(Number(b.minimo)||0)),
+  }[ordem]||((a,b)=>0);
+  lista.sort(ord);
+
   const el=document.getElementById('estoque-tabela');
-  if(!estoque.length){el.innerHTML='<div class="empty">Nenhuma peça cadastrada</div>';return;}
-  el.innerHTML=`<table class="table"><thead><tr><th>Nome</th><th>Código</th><th>Qtd.</th><th>Mínimo</th><th>Preço unit.</th><th>Valor total</th><th>Localização</th><th>Status</th><th></th></tr></thead>
-    <tbody>${estoque.map(p=>{const crit=p.qtd<=p.minimo;return`<tr>
-      <td style="font-weight:500;">${esc(p.nome)}</td><td class="mono" style="font-size:12px;">${esc(p.codigo||'-')}</td>
-      <td class="mono" style="${crit?'color:var(--red-dark);font-weight:700;':''}">${p.qtd}</td><td class="mono">${p.minimo}</td>
-      <td class="mono">${p.preco?fmtBRL(p.preco):'-'}</td><td class="mono">${fmtBRL(p.qtd*(p.preco||0))}</td>
-      <td style="font-size:12px;color:var(--text3);">${esc(p.localizacao||'-')}</td>
-      <td><span class="badge ${crit?'critico':'ok'}">${crit?'Crítico':'OK'}</span></td>
-      <td style="text-align:right;white-space:nowrap;"><button class="btn-edit" onclick="editEstoque(${p.id})">Editar</button><button class="btn-danger" onclick="delEstoque(${p.id})">Excluir</button></td>
-    </tr>`;}).join('')}</tbody></table>`;
+  if(!estoque.length){el.innerHTML='<div class="empty">Nenhum material cadastrado</div>';return;}
+  if(!lista.length){el.innerHTML='<div class="empty">Nenhum material corresponde aos filtros</div>';return;}
+
+  el.innerHTML=`<table class="table"><thead><tr><th>Material</th><th>Código</th><th style="width:170px;">Nível</th><th>Mínimo</th><th>Preço unit.</th><th>Valor total</th><th>Localização</th><th style="text-align:right;">Ações</th></tr></thead>
+    <tbody>${lista.map(p=>{
+      const n=_nivelEstoque(p);
+      const qtd=Number(p.qtd)||0, min=Number(p.minimo)||0;
+      return `<tr>
+        <td style="font-weight:500;">${esc(p.nome)}<div style="font-size:11px;color:var(--text3);">${esc(p.fornecedor||'')}</div></td>
+        <td class="mono" style="font-size:12px;">${esc(p.codigo||'-')}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="mono" style="min-width:32px;${n.st==='critico'||n.st==='zerado'?'color:var(--red);font-weight:700;':n.st==='baixo'?'color:var(--orange);font-weight:600;':''}">${qtd}</span>
+            <div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden;"><div style="width:${n.pct}%;height:100%;background:${n.cor};transition:width .25s;"></div></div>
+          </div>
+        </td>
+        <td class="mono">${min}</td>
+        <td class="mono">${p.preco?fmtBRL(p.preco):'-'}</td>
+        <td class="mono">${fmtBRL(qtd*(Number(p.preco)||0))}</td>
+        <td style="font-size:12px;color:var(--text3);">${esc(p.localizacao||'-')}</td>
+        <td style="text-align:right;white-space:nowrap;">
+          <button class="btn-sm" title="Entrada"  onclick="abrirModalMov('${p.id}','entrada')">＋</button>
+          <button class="btn-sm" title="Saída"    onclick="abrirModalMov('${p.id}','saida')">－</button>
+          <button class="btn-sm" title="Ajustar"  onclick="abrirModalMov('${p.id}','ajuste')">⚖</button>
+          <button class="btn-edit" onclick="editEstoque('${p.id}')">Editar</button>
+          <button class="btn-danger" onclick="delEstoque('${p.id}')">Excluir</button>
+        </td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
 }
 
 
@@ -2440,7 +2944,7 @@ function atualizarColabs(){
       <td class="mono">${c.comissao?c.comissao+'%':'-'}</td>
       <td style="font-size:12px;">${esc(c.pgto||'-')}</td>
       <td><span class="badge ${c.status==='ativo'?'colaborador':'fechado'}">${esc(c.status)}</span></td>
-      <td style="text-align:right;white-space:nowrap;"><button class="btn-edit" onclick="editColab(${c.id})">Editar</button><button class="btn-danger" onclick="delColab(${c.id})">Excluir</button></td>
+      <td style="text-align:right;white-space:nowrap;"><button class="btn-edit" onclick="editColab('${c.id}')">Editar</button><button class="btn-danger" onclick="delColab('${c.id}')">Excluir</button></td>
     </tr>`).join('')}</tbody></table>`;
 }
 function abrirModalColab(){
@@ -2458,24 +2962,39 @@ function editColab(id){
   document.getElementById('colab-pgto').value=c.pgto||'PIX';document.getElementById('colab-banco').value=c.banco||'';document.getElementById('colab-status').value=c.status||'ativo';
   document.getElementById('modal-colab').classList.add('show');
 }
-function salvarColab(){
+async function salvarColab(){
   const id=document.getElementById('colab-id').value;
   const nome=document.getElementById('colab-nome').value.trim();
   const salario=parseFloat(document.getElementById('colab-salario').value);
   if(!nome){toast('Informe o nome','error');return;}if(!salario||salario<0){toast('Informe o salário','error');return;}
   const dados={nome,cpf:document.getElementById('colab-cpf').value.trim(),tel:document.getElementById('colab-tel').value.trim(),cargo:document.getElementById('colab-cargo').value,salario,comissao:parseFloat(document.getElementById('colab-comissao').value)||0,pgto:document.getElementById('colab-pgto').value,banco:document.getElementById('colab-banco').value.trim(),status:document.getElementById('colab-status').value};
-  if(id){
-    const i=colabs.findIndex(x=>x.id===id);
-    if(i>=0)colabs[i]={...colabs[i],...dados};
-    sbSalvarColab({id,...dados}).catch(()=>{});
-  } else {
-    const tmp={id:'tmp_c_'+Date.now(),...dados};
-    colabs.push(tmp);
-    sbSalvarColab(dados).then(r=>{if(r)tmp.id=r.id;}).catch(()=>{});
-  }
-  atualizarColabs();fecharModalId('modal-colab');logAudit('colab',(id?'editou ':'criou ')+nome);toast('Colaborador salvo','success');
+  const btn=document.querySelector('#modal-colab .btn-primary');
+  await withLock('salvar-colab-'+(id||'novo'), async()=>{
+    await safeOp('Erro ao salvar colaborador', async()=>{
+      if(id){
+        await sbSalvarColab({id,...dados});
+        const i=colabs.findIndex(x=>x.id===id);
+        if(i>=0)colabs[i]={...colabs[i],...dados};
+      } else {
+        const r=await sbSalvarColab(dados);
+        if(r)colabs.push(r);
+      }
+      atualizarColabs();fecharModalId('modal-colab');
+      logAudit('colab',(id?'editou ':'criou ')+nome);
+      toast('Colaborador salvo','success');
+    },{btn});
+  });
 }
-function delColab(id){const c=colabs.find(x=>x.id===id);if(!c)return;if(!confirm(`Excluir ${c.nome}?`))return;colabs=colabs.filter(x=>x.id!==id);sbExcluirColab(id).catch(()=>{});atualizarColabs();toast('Colaborador excluído');}
+async function delColab(id){
+  const c=colabs.find(x=>x.id===id);if(!c)return;
+  if(!confirmarAcao(`Inativar o colaborador "${c.nome}"?\n\n(O registro é mantido por integridade do histórico — soft delete.)`))return;
+  await safeOp('Erro ao excluir colaborador', async()=>{
+    await sbExcluirColab(id);
+    colabs=colabs.filter(x=>x.id!==id);
+    atualizarColabs();
+    toast('Colaborador inativado','success');
+  });
+}
 
 /* ============ SALÁRIOS ============ */
 function mesAtualRef(){const d=new Date();let ano=d.getFullYear(),mes=d.getMonth();if(ano<BASE_ANO||(ano===BASE_ANO&&mes<BASE_MES)){ano=BASE_ANO;mes=BASE_MES;}return{ano,mes};}
@@ -2506,7 +3025,7 @@ function atualizarSalarios(){
       <td class="mono" style="color:var(--green-dark);">${com>0?'+'+fmtBRL(com):'-'}</td>
       <td class="mono" style="font-weight:600;">${fmtBRL((parseFloat(c.salario)||0)+com)}</td>
       <td><span class="badge ${pago?'pago':'pendente'}">${pago?'Pago':'Pendente'}</span></td>
-      <td style="text-align:right;">${pago?'<span style="font-size:12px;color:var(--text3);">—</span>':`<button class="btn-pay" onclick="abrirModalPagar(${c.id})">Pagar</button>`}</td>
+      <td style="text-align:right;">${pago?'<span style="font-size:12px;color:var(--text3);">—</span>':`<button class="btn-pay" onclick="abrirModalPagar('${c.id}')">Pagar</button>`}</td>
     </tr>`;}).join('')}</tbody></table>`;
   const hist=[...pagamentos].reverse();
   const hEl=document.getElementById('salarios-hist');
@@ -2525,7 +3044,7 @@ function abrirModalPagar(colabId){
   document.getElementById('modal-pagar').classList.add('show');
 }
 function confirmarPagamento(){
-  const colabId=parseInt(document.getElementById('pagar-colab-id').value);
+  const colabId=document.getElementById('pagar-colab-id').value;
   const refKey=document.getElementById('pagar-mes').value;
   const[ano,mes]=refKey.split('-').map(Number);
   const c=colabs.find(x=>x.id===colabId);if(!c)return;
@@ -2533,8 +3052,8 @@ function confirmarPagamento(){
   const hoje=hojeISO();const refMesLabel=mesLabel(ano,mes-1);
   const pag={colabId,colabNome:c.nome,valor:parseFloat(c.salario),data:hoje,refMes:refKey,refMesLabel,pagoPor:session.username,tipo:'saida',descricao:'Salário — '+c.nome+' — '+refMesLabel};
   pagamentos.push({id:'tmp_p_'+Date.now(),...pag});
-  sbSalvarPagamento(pag).then(r=>{if(r){const i=pagamentos.findIndex(x=>x.colabId===colabId&&x.refMes===refKey);if(i>=0)pagamentos[i].id=r.id;}}).catch(()=>{});
-  sbSalvarLancamento({tipo:'saida',descricao:'Salário — '+c.nome+' — '+refMesLabel,valor:parseFloat(c.salario),categoria:config.catSalario,data:hoje}).catch(()=>{});
+  sbSalvarPagamento(pag).then(r=>{if(r){const i=pagamentos.findIndex(x=>x.colabId===colabId&&x.refMes===refKey);if(i>=0)pagamentos[i].id=r.id;}}).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
+  sbSalvarLancamento({tipo:'saida',descricao:'Salário — '+c.nome+' — '+refMesLabel,valor:parseFloat(c.salario),categoria:config.catSalario,data:hoje}).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
   fecharModalId('modal-pagar');logAudit('pagamento','Salário '+c.nome+' '+refMesLabel);toast('Pagamento registrado e lançado no FinControl','success');atualizarSalarios();atualizarDashboard();
 }
 function pagarTodosSalarios(){
@@ -2547,8 +3066,8 @@ function pagarTodosSalarios(){
   pend.forEach(c=>{
     const pag={colabId:c.id,colabNome:c.nome,valor:parseFloat(c.salario),data:hoje,refMes:refKey,refMesLabel,pagoPor:session.username,tipo:'saida',descricao:'Salário — '+c.nome+' — '+refMesLabel};
     pagamentos.push({id:'tmp_p_'+Date.now()+'_'+c.id,...pag});
-    sbSalvarPagamento(pag).catch(()=>{});
-    sbSalvarLancamento({tipo:'saida',descricao:'Salário — '+c.nome+' — '+refMesLabel,valor:parseFloat(c.salario),categoria:config.catSalario,data:hoje}).catch(()=>{});
+    sbSalvarPagamento(pag).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
+    sbSalvarLancamento({tipo:'saida',descricao:'Salário — '+c.nome+' — '+refMesLabel,valor:parseFloat(c.salario),categoria:config.catSalario,data:hoje}).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
   });
   toast(pend.length+' pagamento(s) lançado(s) no FinControl','success');atualizarSalarios();atualizarDashboard();
 }
@@ -2729,6 +3248,7 @@ function atualizarConfig() {
   document.getElementById('cfg-cat-pecas').value = config.catPecas||'Compra de peças';
   document.getElementById('cfg-auto-receita').value = config.autoReceita||'ask';
   document.getElementById('cfg-capacidade').value = config.capacidade||20;
+  document.getElementById('cfg-permitir-edit-entrada').value = config.permitirEditarDataEntrada===false ? 'nao' : 'sim';
   atualizarUsers();
   atualizarServicos();
   verificarBackupSemanal();
@@ -2740,7 +3260,10 @@ function salvarConfig() {
   config.catPecas = document.getElementById('cfg-cat-pecas').value.trim()||'Compra de peças';
   config.autoReceita = document.getElementById('cfg-auto-receita').value;
   config.capacidade = parseInt(document.getElementById('cfg-capacidade').value)||20;
-  sbSalvarConfig(config).catch(()=>{});
+  config.permitirEditarDataEntrada = document.getElementById('cfg-permitir-edit-entrada').value !== 'nao';
+  sbSalvarConfig(config).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
+  // Re-renderiza modal de detalhes se estiver aberto, para refletir novo estado do botão
+  if(document.getElementById('modal-detalhes')?.classList.contains('show')){/* usuário precisa reabrir */}
   logAudit('config', 'Configurações salvas');
   toast('Configurações salvas', 'success');
 }
@@ -2758,7 +3281,7 @@ function addServico() {
   if (!v) return;
   if (config.servicos.includes(v)) { toast('Serviço já existe','error'); return; }
   config.servicos.push(v);
-  sbSalvarConfig(config).catch(()=>{});
+  sbSalvarConfig(config).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
   atualizarServicos();
   inp.value = '';
   toast('Serviço adicionado', 'success');
@@ -2767,7 +3290,7 @@ function removerServico(i) {
   if (config.servicos.length <= 1) { toast('Mantenha ao menos 1 serviço','error'); return; }
   if (!confirm('Remover "'+config.servicos[i]+'"?')) return;
   config.servicos.splice(i, 1);
-  sbSalvarConfig(config).catch(()=>{});
+  sbSalvarConfig(config).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
   atualizarServicos();
 }
 
@@ -2878,7 +3401,7 @@ function delUser(id) {
   const u = users.find(x=>x.id===id); if(!u) return;
   if (!confirm(`Excluir usuário ${u.username||u.email}?`)) return;
   users = users.filter(x=>x.id!==id);
-  db.from('profiles').update({ativo:false}).eq('id',id).then(()=>{}).catch(()=>{});
+  db.from('profiles').update({ativo:false}).eq('id',id).then(()=>{}).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
   atualizarUsers();
   logAudit('usuario', 'desativou '+(u.username||u.email));
   toast('Usuário removido');
@@ -3008,7 +3531,7 @@ const TOUR_STEPS=[
   {sel:'[data-panel="veiculos"]',title:'Controle de Veículos',text:'Registre entradas e saídas de veículos. O horário é automático. Após entrada, preencha a ficha de vistoria.'},
   {sel:'[data-panel="kanban"]',title:'Kanban de OS',text:'Arraste os cards entre as colunas. Ao chegar em "Pronto", um botão WhatsApp aparece para avisar o cliente.'},
   {sel:'[data-panel="agenda"]',title:'Agenda',text:'Gerencie agendamentos em visão semanal. Use "→ OS" para converter um agendamento em ordem de serviço com um clique.'},
-  {sel:'[data-panel="estoque"]',title:'Estoque de Peças',text:'Cadastre peças, defina estoque mínimo e receba alertas. Compras são lançadas automaticamente no FinControl.'},
+  {sel:'[data-panel="estoque"]',title:'Estoque de Materiais',text:'Cadastre materiais, defina estoque mínimo e receba alertas. Compras são lançadas automaticamente no FinControl.'},
   {sel:'[data-panel="fluxo-caixa"]',title:'Fluxo de Caixa',text:'Acompanhe entradas, saídas e saldo do mês. Defina metas de faturamento e monitore o progresso aqui.'},
   {sel:'[data-panel="comunicacao"]',title:'Comunicação',text:'Envie orçamentos e pesquisas de satisfação por WhatsApp, veja aniversariantes e contate clientes inativos.'},
 ];
@@ -3104,7 +3627,7 @@ function salvarMeta(){
   const metaObj={valor:parseFloat(document.getElementById('meta-valor').value)||0,veiculos:parseInt(document.getElementById('meta-veiculos').value)||0,obs:document.getElementById('meta-obs').value.trim()};
   metas[k]=metaObj;
   // Upsert na tabela metas
-  db.from('metas').upsert({workspace_id:wsId(),ano:parseInt(ano),mes:parseInt(mesStr),receita_meta:metaObj.valor,os_meta:metaObj.veiculos},{onConflict:'workspace_id,ano,mes'}).then(()=>{}).catch(()=>{});
+  db.from('metas').upsert({workspace_id:wsId(),ano:parseInt(ano),mes:parseInt(mesStr),receita_meta:metaObj.valor,os_meta:metaObj.veiculos},{onConflict:'workspace_id,ano,mes'}).then(()=>{}).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
   fecharModalId('modal-meta');
   atualizarFluxoCaixa();
   atualizarDashboard();
@@ -3180,7 +3703,7 @@ function atualizarFluxoCaixa(){
   else{
     const vencidas=parcelas.filter(p=>!p.paga&&p.vencimento<hoje);
     parcEl.innerHTML=(vencidas.length?`<div class="danger-box show" style="margin-bottom:8px;">⚠️ ${vencidas.length} parcela(s) vencida(s)!</div>`:'')+
-    parc.map(p=>`<div class="parcela-row"><span style="flex:1;font-size:12px;">${esc(p.descricao)}</span><span class="parcela-data mono" style="font-size:11px;">${fmtData(p.vencimento)}</span><span class="parcela-valor mono" style="font-size:12px;">${fmtBRL(p.valor)}</span><button class="btn-sm" onclick="marcarParcelaPaga(${p.id})" style="font-size:10px;">✓ Paga</button></div>`).join('');
+    parc.map(p=>`<div class="parcela-row"><span style="flex:1;font-size:12px;">${esc(p.descricao)}</span><span class="parcela-data mono" style="font-size:11px;">${fmtData(p.vencimento)}</span><span class="parcela-valor mono" style="font-size:12px;">${fmtBRL(p.valor)}</span><button class="btn-sm" onclick="marcarParcelaPaga('${p.id}')" style="font-size:10px;">✓ Paga</button></div>`).join('');
   }
 
   // Chart diário
@@ -3228,7 +3751,7 @@ function atualizarFcExtrato(){
         <td class="mono" style="font-size:12px;">${fmtData(s.vencimento)}</td>
         <td class="mono">${fmtBRL(s.valor)}</td>
         <td><span class="badge ${cls}">${s.pago?'Recebido':s.vencimento<hoje?'Vencido':'Aguardando'}</span></td>
-        <td>${!s.pago?`<button class="btn-pay" onclick="marcarSegPaga(${s.id})">✓ Recebido</button>`:''}</td>
+        <td>${!s.pago?`<button class="btn-pay" onclick="marcarSegPaga('${s.id}')">✓ Recebido</button>`:''}</td>
       </tr>`;
     }).join('')}</tbody></table>`;
     return;
@@ -3267,9 +3790,9 @@ function atualizarFilaEspera(){
       ${f.obs?`<div style="font-size:11px;color:var(--text3);margin-top:2px;">${esc(f.obs)}</div>`:''}
     </div>
     <div style="display:flex;gap:6px;flex-shrink:0;">
-      ${vagas>0&&i===0?`<button class="btn-primary" style="font-size:11px;padding:5px 10px;" onclick="promoverFila(${f.id})">→ Entrada</button>`:''}
+      ${vagas>0&&i===0?`<button class="btn-primary" style="font-size:11px;padding:5px 10px;" onclick="promoverFila('${f.id}')">→ Entrada</button>`:''}
       ${f.tel?`<a href="https://wa.me/55${(f.tel||'').replace(/\D/g,'')}" target="_blank" class="btn-sm" style="background:#25D366;color:#fff;border:none;text-decoration:none;display:flex;align-items:center;">📲</a>`:''}
-      <button class="btn-danger" onclick="removerFila(${f.id})">×</button>
+      <button class="btn-danger" onclick="removerFila('${f.id}')">×</button>
     </div>
   </div>`).join('');
 }
@@ -3289,7 +3812,7 @@ function salvarFila(){
   const filaItem={placa,modelo,cliente_nome:cliente,tel:document.getElementById('fila-tel').value.trim(),servico:document.getElementById('fila-servico').value,obs:document.getElementById('fila-obs').value.trim(),prioridade:0};
   const tmp={id:'tmp_f_'+Date.now(),...filaItem,placa,modelo,cliente};
   fila.push(tmp);
-  db.from('fila').insert({...filaItem,workspace_id:wsId()}).select().single().then(r=>{if(r.data)tmp.id=r.data.id;}).catch(()=>{});
+  db.from('fila').insert({...filaItem,workspace_id:wsId()}).select().single().then(r=>{if(r.data)tmp.id=r.data.id;}).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
   fecharModalId('modal-fila');
   atualizarFilaEspera();
   logAudit('fila','Adicionado: '+placa);
@@ -3298,7 +3821,7 @@ function salvarFila(){
 function promoverFila(id){
   const f=fila.find(x=>x.id===id);if(!f)return;
   if(!confirm(`Registrar entrada de ${f.placa} — ${f.cliente}?`))return;
-  fila=fila.filter(x=>x.id!==id);db.from('fila').delete().eq('id',id).then(()=>{}).catch(()=>{});
+  fila=fila.filter(x=>x.id!==id);db.from('fila').delete().eq('id',id).then(()=>{}).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
   // Pre-fill modal entrada
   popularSelects();orcItens=[];renderOrcItens();nivelComb=null;
   ['v-cor','v-ano','v-orcamento','v-desc'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
@@ -3310,10 +3833,15 @@ function promoverFila(id){
   document.getElementById('v-cliente-box').style.display='none';
   document.getElementById('modal-entrada').classList.add('show');
 }
-function removerFila(id){
-  if(!confirm('Remover da fila?'))return;
-  fila=fila.filter(x=>x.id!==id);db.from('fila').delete().eq('id',id).then(()=>{}).catch(()=>{});
-  atualizarFilaEspera();toast('Removido da fila');
+async function removerFila(id){
+  const f=fila.find(x=>x.id===id);
+  if(!confirmarAcao(`Remover ${f?f.placa+' — '+f.cliente:'item'} da fila?`))return;
+  await safeOp('Erro ao remover da fila', async()=>{
+    await handle(db.from('fila').delete().eq('id',id));
+    fila=fila.filter(x=>x.id!==id);
+    atualizarFilaEspera();
+    toast('Removido da fila','success');
+  });
 }
 
 /* ======================================================= */
@@ -3322,7 +3850,7 @@ function removerFila(id){
 let fotosVidAtual=null;
 
 function abrirModalFotosOS(){
-  const id=parseInt(document.getElementById('saida-id').value);
+  const id=document.getElementById('saida-id').value;
   const v=veiculos.find(x=>x.id===id);if(!v)return;
   fotosVidAtual=id;
   document.getElementById('fotos-placa-titulo').textContent=v.placa;
@@ -3340,7 +3868,7 @@ function renderFotoGrid(vid){
   const fs=fotos[vid]||[];
   const el=document.getElementById('foto-grid-display');
   const addBtn=fs.length<10?`<button class="foto-add-btn" onclick="document.getElementById('foto-input').click()">＋</button>`:'';
-  el.innerHTML=fs.map((f,i)=>`<div class="foto-thumb"><img src="${f}" alt="Foto ${i+1}" onclick="verFotoFull('${f}')"><button class="foto-del" onclick="delFoto(${vid},${i})">×</button></div>`).join('')+addBtn;
+  el.innerHTML=fs.map((f,i)=>`<div class="foto-thumb"><img src="${f}" alt="Foto ${i+1}" onclick="verFotoFull('${f}')"><button class="foto-del" onclick="delFoto('${vid}',${i})">×</button></div>`).join('')+addBtn;
 }
 async function processarFotos(input){
   const files=[...input.files];
@@ -3423,7 +3951,7 @@ function aplicarDesconto(){
 /* PARCELAMENTO                                           */
 /* ======================================================= */
 function abrirModalParcelas(){
-  const id=parseInt(document.getElementById('saida-id').value);
+  const id=document.getElementById('saida-id').value;
   const v=veiculos.find(x=>x.id===id);if(!v)return;
   document.getElementById('parc-veiculo-id').value=id;
   document.getElementById('parc-placa').textContent=v.placa;
@@ -3456,7 +3984,7 @@ function salvarParcelamento(){
   const n=parseInt(document.getElementById('parc-num').value)||2;
   const dataIni=document.getElementById('parc-data-ini').value;
   const pgto=document.getElementById('parc-pgto').value;
-  const vid=parseInt(document.getElementById('parc-veiculo-id').value);
+  const vid=document.getElementById('parc-veiculo-id').value;
   const v=veiculos.find(x=>x.id===vid);
   if(!total||!dataIni){toast('Preencha valor e data','error');return;}
   const valorParc=Math.round(total/n*100)/100;
@@ -3469,7 +3997,7 @@ function salvarParcelamento(){
     const parc={veiculo_id:vid,descricao:(v?v.placa+' ':'')+pgto+' '+(i+1)+'/'+n,vencimento:dStr,valor:val,pago:false};
     const tmp={id:'tmp_parc_'+base+'_'+i,...parc,pgto,paga:false};
     parcelas.push(tmp);
-    sbSalvarParcela(parc).then(r=>{if(r)tmp.id=r.id;}).catch(()=>{});
+    sbSalvarParcela(parc).then(r=>{if(r)tmp.id=r.id;}).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
   }
   fecharModalId('modal-parcelas');
   toast(n+'x parcelas criadas','success');
@@ -3478,7 +4006,7 @@ function salvarParcelamento(){
 function marcarParcelaPaga(id){
   const p=parcelas.find(x=>x.id===id);if(!p)return;
   p.paga=true;p.pagaEm=hojeISO();
-  sbPagarParcela(id).catch(()=>{});
+  sbPagarParcela(id).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
   atualizarFluxoCaixa();toast('Parcela marcada como paga','success');
 }
 
@@ -3486,7 +4014,7 @@ function marcarParcelaPaga(id){
 /* NOTA FISCAL / RECIBO NUMERADO                         */
 /* ======================================================= */
 function abrirModalNota(){
-  const id=parseInt(document.getElementById('saida-id').value);
+  const id=document.getElementById('saida-id').value;
   const v=veiculos.find(x=>x.id===id);if(!v)return;
   document.getElementById('nota-veiculo-id').value=id;
   const seq=((config._notaSeq||0)+1);
@@ -3498,7 +4026,7 @@ function abrirModalNota(){
   document.getElementById('modal-nota').classList.add('show');
 }
 function emitirNota(){
-  const id=parseInt(document.getElementById('nota-veiculo-id').value);
+  const id=document.getElementById('nota-veiculo-id').value;
   const v=veiculos.find(x=>x.id===id);
   const num=document.getElementById('nota-numero').value;
   const cnpj=document.getElementById('nota-cnpj').value.trim();
@@ -3508,7 +4036,7 @@ function emitirNota(){
   // Salvar configuração
   if(cnpj)config.cnpj=cnpj;if(end)config.endereco=end;
   config._notaSeq=parseInt(num)||0;
-  sbSalvarConfig(config).catch(()=>{});
+  sbSalvarConfig(config).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
   // Registrar nota
   const notaRow={veiculo_id:id,cliente:v?.cliente||'',valor,data:hojeISO()};
   notas.push({id:'tmp_n_'+Date.now(),numero:num,...notaRow,emitidoPor:session.username});
@@ -3673,7 +4201,7 @@ function salvarSatisfacao(){
   if(!cli){toast('Informe o cliente','error');return;}
   const satRow={nota:parseInt(document.getElementById('sat-nota').value)||5,comentario:document.getElementById('sat-comentario').value.trim()};
   satisf.push({id:'tmp_s_'+Date.now(),cliente:cli,veiculo:document.getElementById('sat-vei').value.toUpperCase().trim(),...satRow,data:hojeISO()});
-  db.from('satisfacoes').insert({...satRow,workspace_id:wsId()}).then(()=>{}).catch(()=>{});
+  db.from('satisfacoes').insert({...satRow,workspace_id:wsId()}).then(()=>{}).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
   fecharModalId('modal-satisfacao');atualizarSatisfacao();toast('Avaliação registrada','success');
 }
 
@@ -3687,7 +4215,7 @@ function atualizarOrcWpp(){
   previewOrcWpp();
 }
 function previewOrcWpp(){
-  const vid=parseInt(document.getElementById('orc-wpp-veiculo').value);
+  const vid=document.getElementById('orc-wpp-veiculo').value;
   const prev=document.getElementById('orc-wpp-preview');
   if(!vid){prev.textContent='Selecione uma OS para ver a prévia da mensagem.';return;}
   const v=veiculos.find(x=>x.id===vid);
@@ -3705,7 +4233,7 @@ function previewOrcWpp(){
   prev.textContent=msg;
 }
 function enviarOrcWpp(){
-  const vid=parseInt(document.getElementById('orc-wpp-veiculo').value);
+  const vid=document.getElementById('orc-wpp-veiculo').value;
   if(!vid){toast('Selecione um veículo','error');return;}
   const v=veiculos.find(x=>x.id===vid);
   const tel=(v?.telefone||'').replace(/\D/g,'');
@@ -3728,7 +4256,7 @@ salvarCliente = function(){
   const dados={nome,telefone:tel,email:document.getElementById('cli-email').value.trim(),doc:document.getElementById('cli-doc').value.trim(),obs:document.getElementById('cli-obs').value.trim(),nasc:document.getElementById('cli-nasc').value||null,filial:document.getElementById('cli-filial').value.trim()};
   if(id){const i=clientes.findIndex(x=>x.id===parseInt(id));if(i>=0)clientes[i]={...clientes[i],...dados};}
   else clientes.push({id:Date.now(),...dados,criadoEm:new Date().toISOString()});
-  sbSalvarCliente(id?clientes.find(x=>x.id===parseInt(id)):clientes[clientes.length-1]).catch(()=>{});
+  sbSalvarCliente(id?clientes.find(x=>x.id===parseInt(id)):clientes[clientes.length-1]).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
   fecharModalId('modal-cliente');atualizarClientes();atualizarBadges();verificarAniversariantes();toast('Cliente salvo','success');
 };
 
@@ -3859,6 +4387,12 @@ const GERENTE_READONLY = ['fluxo-caixa'];
 function somenteDono(){
   return session && (session.role==='dono'||session.role==='socio');
 }
+// Pode editar a data de entrada? (role + flag de configuração)
+function podeEditarDataEntrada(){
+  if(!somenteDono()) return false;
+  // padrão: permitido. Só bloqueia se config.permitirEditarDataEntrada === false
+  return config.permitirEditarDataEntrada !== false;
+}
 function temAcesso(panel){
   if(!session) return false;
   const acesso = ROLE_ACCESS[session.role] || [];
@@ -3961,7 +4495,7 @@ function marcarSegPaga(id){
   // Lançar como entrada financeira
   sbSalvarLancamento({ tipo:'entrada', descricao:'Seguradora '+s.nome+' — '+s.placa,
     valor: s.valor, categoria: config.catServico||'Serviços', data: s.pagaEm,
-    obs: 'Sinistro: '+(s.sinistro||'—') }).catch(()=>{});
+    obs: 'Sinistro: '+(s.sinistro||'—') }).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
   toast('Pagamento de seguradora registrado ✓', 'success');
   atualizarSegDashboard();
 }
@@ -3983,7 +4517,7 @@ function atualizarSegDashboard(){
         <span style="flex:1;font-size:12px;"><strong>${esc(s.nome)}</strong> — ${esc(s.placa)}</span>
         <span class="seg-vence ${cls}" style="font-size:11px;">${fmtData(venc)} ${label}</span>
         <span class="mono" style="font-size:12px;">${fmtBRL(s.valor)}</span>
-        <button class="btn-sm" onclick="marcarSegPaga(${s.id})" style="font-size:10px;background:var(--green);color:#fff;border:none;">✓ Recebido</button>
+        <button class="btn-sm" onclick="marcarSegPaga('${s.id}')" style="font-size:10px;background:var(--green);color:#fff;border:none;">✓ Recebido</button>
       </div>`;
     }).join('');
   const curContent = el.innerHTML;
@@ -4030,17 +4564,21 @@ function abrirCancelarOS(id){
 }
 
 function executarCancelOS(tipo){
-  const id = parseInt(document.getElementById('cancel-os-id').value);
+  const id = document.getElementById('cancel-os-id').value;
   const motivo = document.getElementById('cancel-os-motivo').value.trim();
   const v = veiculos.find(x=>x.id===id);
   if(!v){ fecharModalId('modal-cancelar-os'); return; }
 
   if(tipo === 'excluir'){
     if(!confirm(`Excluir COMPLETAMENTE a entrada de ${v.placa}? Esta ação é irreversível.`)) return;
-    veiculos = veiculos.filter(x=>x.id!==id);
-    sbExcluirVeiculo(id).catch(()=>{});
-    logAudit('excluir-os', `${v.placa} — ${v.cliente}${motivo?' — '+motivo:''}`);
-    toast(`Entrada de ${v.placa} excluída`, 'success');
+    sbExcluirVeiculo(id).then(()=>{
+      veiculos = veiculos.filter(x=>x.id!==id);
+      logAudit('excluir-os', `${v.placa} — ${v.cliente}${motivo?' — '+motivo:''}`);
+      toast(`Entrada de ${v.placa} excluída`, 'success');
+      atualizarVeiculos(); atualizarKanban(); atualizarDashboard();
+    }).catch(e=>{
+      toast('Erro ao excluir: '+(e.friendlyMessage||e.message),'error');
+    });
   } else if(tipo === 'cancelar'){
     if(!confirm(`Cancelar OS de ${v.placa}? O registro permanecerá no histórico como cancelado.`)) return;
     v.cancelado = true;
@@ -4050,7 +4588,7 @@ function executarCancelOS(tipo){
     v.saida = { data: hojeISO(), hora: agoraHM(), valor: 0, pgto: 'Cancelado',
       obs: 'OS CANCELADA' + (motivo?' — '+motivo:''), registradoPor: session.username,
       timestamp: new Date().toISOString() };
-    sbSalvarVeiculo(v).catch(()=>{});
+    sbSalvarVeiculo(v).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
     logAudit('cancelar-os', `${v.placa} — ${v.cliente}${motivo?' — '+motivo:''}`);
     toast(`OS de ${v.placa} cancelada`, 'success');
   } else if(tipo === 'remover'){
@@ -4061,7 +4599,7 @@ function executarCancelOS(tipo){
     v.saida = { data: hojeISO(), hora: agoraHM(), valor: 0, pgto: 'Removido',
       obs: 'Removido do pátio' + (motivo?' — '+motivo:''), registradoPor: session.username,
       timestamp: new Date().toISOString() };
-    sbSalvarVeiculo(v).catch(()=>{});
+    sbSalvarVeiculo(v).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
     logAudit('remover-patio', `${v.placa}${motivo?' — '+motivo:''}`);
     toast(`${v.placa} removido do pátio`, 'success');
   }
@@ -4098,7 +4636,7 @@ entrarApp = function(){
 // Patch confirmarSaida — integrar seguradora
 const _confirmarSaidaOrigV4 = confirmarSaida;
 confirmarSaida = function(){
-  const id = parseInt(document.getElementById('saida-id').value);
+  const id = document.getElementById('saida-id').value;
   const pgto = document.getElementById('saida-pgto').value;
   const v = veiculos.find(x=>x.id===id);
   // Se seguradora, registrar e não lançar no FinControl ainda
@@ -4167,6 +4705,217 @@ abrirDetalhes = function(id){
     if(old) old.remove();
   }
 };
+/* ════════════════════════════════════════════════════════════
+   SystemValidator — auditoria de integridade, regras e UI
+   Saída: { status:'ok'|'warning'|'error', problemas:[], sugestoes:[] }
+   ════════════════════════════════════════════════════════════ */
+const SystemValidator = (function(){
+  const norm   = s => (s||'').toString().trim().toLowerCase();
+  const onlyD  = s => (s||'').toString().replace(/\D/g,'');
+  const HOJE   = () => hojeISO();
+
+  function _result(){ return {problemas:[], sugestoes:[]}; }
+  function _add(out, sev, msg, sug){
+    out.problemas.push({sev, msg});
+    if(sug) out.sugestoes.push(sug);
+  }
+
+  // ── 1. Integridade do banco (state local, espelha Supabase) ──
+  async function validateDatabaseIntegrity(){
+    const out = _result();
+
+    // Clientes duplicados por telefone
+    const porTel = {};
+    (clientes||[]).forEach(c=>{
+      const t = onlyD(c.telefone);
+      if(t.length>=8){ (porTel[t] = porTel[t]||[]).push(c); }
+    });
+    Object.entries(porTel).forEach(([t,arr])=>{
+      if(arr.length>1) _add(out,'warning',
+        `Clientes duplicados pelo telefone ${t}: ${arr.map(x=>x.nome).join(', ')}`,
+        `Mesclar ou remover duplicados (${arr.length} registros)`);
+    });
+
+    // Veículos sem placa, sem cliente, ou com placa duplicada (no pátio)
+    const placasNoPatio = {};
+    (veiculos||[]).filter(v=>!v.saida).forEach(v=>{
+      if(!v.placa) _add(out,'error',`Veículo sem placa (id ${v.id})`);
+      const p = norm(v.placa);
+      if(p) (placasNoPatio[p] = placasNoPatio[p]||[]).push(v);
+    });
+    Object.entries(placasNoPatio).forEach(([p,arr])=>{
+      if(arr.length>1) _add(out,'error',
+        `Placa "${p.toUpperCase()}" aparece em ${arr.length} OS abertas simultaneamente`,
+        'Investigar — só uma OS por placa pode estar no pátio');
+    });
+
+    // Estoque com quantidade negativa
+    (estoque||[]).forEach(p=>{
+      const q = Number(p.qtd)||0;
+      if(q<0) _add(out,'error',
+        `"${p.nome}" tem quantidade negativa (${q})`,
+        'Ajustar via "⚖ Ajustar" para 0 e investigar histórico');
+    });
+
+    // Estoque mínimo zero (sem alerta possível)
+    const semMin = (estoque||[]).filter(p=>!Number(p.minimo));
+    if(semMin.length>5) _add(out,'warning',
+      `${semMin.length} materiais sem estoque mínimo definido (não dispararão alerta)`,
+      'Definir estoque mínimo nos itens críticos');
+
+    // Agendamentos passados não convertidos em OS
+    const passadosAbertos = (agenda||[]).filter(a=>a.data < HOJE() && !a._convertido);
+    if(passadosAbertos.length) _add(out,'warning',
+      `${passadosAbertos.length} agendamento(s) com data passada e sem conversão`,
+      'Converter em OS ou excluir os obsoletos');
+
+    // Parcelas vencidas não pagas
+    if(typeof DB !== 'undefined' && Array.isArray(DB.parcelas)){
+      const vencidas = DB.parcelas.filter(p=>!p.pago && p.vencimento < HOJE());
+      if(vencidas.length) _add(out,'warning',
+        `${vencidas.length} parcela(s) vencida(s) sem pagamento registrado`,
+        'Verificar fluxo de cobrança');
+    }
+
+    // Tentativa: detectar IDs temporários "tmp_" que ficaram presos
+    const tmps = [
+      ...(veiculos||[]).filter(v=>String(v.id||'').startsWith('tmp_')),
+      ...(clientes||[]).filter(c=>String(c.id||'').startsWith('tmp_')),
+      ...(estoque||[]).filter(p=>String(p.id||'').startsWith('tmp_')),
+      ...(agenda||[]).filter(a=>String(a.id||'').startsWith('tmp_')),
+    ];
+    if(tmps.length) _add(out,'error',
+      `${tmps.length} registro(s) com ID temporário não persistidos no servidor`,
+      'Recarregue a página (F5). Se persistir, verifique conexão/RLS no Supabase');
+
+    return out;
+  }
+
+  // ── 2. Regras de negócio ──
+  async function validateBusinessRules(){
+    const out = _result();
+
+    // OS no pátio há mais de 90 dias
+    const limite = new Date(); limite.setDate(limite.getDate()-90);
+    const limISO = limite.toISOString().slice(0,10);
+    const antigas = (veiculos||[]).filter(v=>!v.saida && v.dataEntrada && v.dataEntrada < limISO);
+    if(antigas.length) _add(out,'warning',
+      `${antigas.length} OS aberta(s) há mais de 90 dias: ${antigas.slice(0,3).map(v=>v.placa).join(', ')}${antigas.length>3?'…':''}`,
+      'Cancelar/Excluir OS abandonadas ou registrar saída pendente');
+
+    // Capacidade do pátio
+    const cap = (typeof config !== 'undefined' && config.capacidade) || 20;
+    const noPatio = (veiculos||[]).filter(v=>!v.saida).length;
+    if(noPatio > cap) _add(out,'error',
+      `Pátio acima da capacidade (${noPatio}/${cap})`,
+      'Liberar OS concluídas ou aumentar capacidade em Configurações');
+    else if(noPatio >= cap*0.9) _add(out,'warning',
+      `Pátio próximo do limite (${noPatio}/${cap})`,'Planejar saídas');
+
+    // Colaboradores ativos sem dados básicos
+    const colabsRuim = (typeof colabs !== 'undefined' ? colabs : []).filter(c=>c.status==='ativo' && (!c.salario || Number(c.salario)<=0));
+    if(colabsRuim.length) _add(out,'warning',
+      `${colabsRuim.length} colaborador(es) ativo(s) sem salário definido`,
+      'Atualizar cadastro');
+
+    // Veículos no pátio sem responsável
+    const semResp = (veiculos||[]).filter(v=>!v.saida && !v.responsavel_id && !v.responsavelId);
+    if(semResp.length>3) _add(out,'warning',
+      `${semResp.length} OS abertas sem responsável atribuído`,
+      'Atribuir colaborador no Kanban');
+
+    // Estoque crítico
+    const crit = (estoque||[]).filter(p=>(Number(p.qtd)||0)<=(Number(p.minimo)||0));
+    if(crit.length) _add(out,'warning',
+      `${crit.length} material(is) abaixo do mínimo`,
+      'Ver alertas no painel Estoque');
+
+    return out;
+  }
+
+  // ── 3. Sanidade da UI / fluxos ──
+  async function validateUIFlows(){
+    const out = _result();
+
+    // Painéis essenciais existem
+    ['panel-dashboard','panel-veiculos','panel-agenda','panel-clientes',
+     'panel-estoque','panel-colaboradores','panel-config']
+      .forEach(id=>{
+        if(!document.getElementById(id))
+          _add(out,'error',`Painel "${id}" não encontrado no DOM`);
+      });
+
+    // Modais essenciais
+    ['modal-entrada','modal-cliente','modal-estoque','modal-mov-estoque','modal-cancelar-os']
+      .forEach(id=>{
+        if(!document.getElementById(id))
+          _add(out,'error',`Modal "${id}" ausente`);
+      });
+
+    // RPC movimentar_estoque acessível? (chamada noop)
+    try{
+      // Não chama RPC real aqui (efeito colateral); só verifica se o cliente db existe
+      if(typeof db === 'undefined' || !db.rpc)
+        _add(out,'error','Cliente Supabase (db) não inicializado');
+    }catch(e){
+      _add(out,'error','Erro ao acessar Supabase: '+e.message);
+    }
+
+    // Sessão / workspace
+    if(!DB.session?.workspace_id)
+      _add(out,'error','Sem workspace ativo na sessão atual',
+        'Faça logout e login novamente');
+
+    return out;
+  }
+
+  // ── runFullAudit ──
+  async function runFullAudit(){
+    const blocos = await Promise.all([
+      validateDatabaseIntegrity(),
+      validateBusinessRules(),
+      validateUIFlows(),
+    ]);
+    const problemas = blocos.flatMap(b=>b.problemas);
+    const sugestoes = blocos.flatMap(b=>b.sugestoes);
+    let status = 'ok';
+    if(problemas.some(p=>p.sev==='error'))   status = 'error';
+    else if(problemas.length)                status = 'warning';
+    return { status, problemas, sugestoes };
+  }
+
+  return { validateDatabaseIntegrity, validateBusinessRules, validateUIFlows, runFullAudit };
+})();
+
+async function rodarValidador(){
+  const el = document.getElementById('validador-resultado');
+  if(!el) return;
+  el.innerHTML = '<div class="empty">Rodando auditoria…</div>';
+  try{
+    const r = await SystemValidator.runFullAudit();
+    const cor = {ok:'var(--green)', warning:'var(--orange)', error:'var(--red)'}[r.status];
+    const lbl = {ok:'✅ Tudo OK', warning:'⚠️ Avisos', error:'❌ Problemas críticos'}[r.status];
+    const sevIcon = {error:'❌', warning:'⚠️'};
+    const probHtml = r.problemas.length
+      ? `<table class="table" style="margin-top:8px;"><thead><tr><th style="width:30px;"></th><th>Problema</th></tr></thead><tbody>
+          ${r.problemas.map(p=>`<tr><td>${sevIcon[p.sev]||''}</td><td>${esc(p.msg)}</td></tr>`).join('')}
+         </tbody></table>`
+      : '<div class="empty" style="padding:14px;">Nenhum problema detectado.</div>';
+    const sugHtml = r.sugestoes.length
+      ? `<div style="margin-top:10px;"><strong>💡 Sugestões:</strong><ul style="margin:6px 0 0 20px;font-size:13px;color:var(--text2);">${r.sugestoes.map(s=>`<li>${esc(s)}</li>`).join('')}</ul></div>`
+      : '';
+    el.innerHTML = `
+      <div style="padding:10px;border-left:4px solid ${cor};background:var(--surface2);border-radius:6px;margin-bottom:8px;">
+        <strong style="color:${cor};">${lbl}</strong>
+        <span style="color:var(--text3);font-size:12px;">· ${r.problemas.length} problema(s) · ${r.sugestoes.length} sugestão(ões)</span>
+      </div>
+      ${probHtml}${sugHtml}`;
+    logAudit('validador', `${r.status} — ${r.problemas.length} problema(s)`);
+  }catch(e){
+    el.innerHTML = `<div class="empty" style="color:var(--red);">Erro ao rodar auditoria: ${esc(e.friendlyMessage||e.message)}</div>`;
+  }
+}
+
 /* ============ MODAIS ============ */
 function fecharModal(e, id) { if (e.target.id===id) fecharModalId(id); }
 function fecharModalId(id) { document.getElementById(id).classList.remove('show'); }
