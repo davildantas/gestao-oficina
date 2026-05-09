@@ -160,7 +160,7 @@ async function carregarTudo() {
   ]);
 
   DB.colabs     = colabs;
-  DB.veiculos   = veiculos.map(v => ({ ...v, itens: v.orcamento_itens || [] }));
+  DB.veiculos   = veiculos.map(veiculoDoDb);
   DB.pagamentos = pagamentos;
   DB.clientes   = clientes;
   DB.agenda     = agenda;
@@ -196,26 +196,177 @@ async function carregarTudo() {
 
 // ─── VEÍCULOS / ORDENS DE SERVIÇO ────────────────────────────
 
-async function sbSalvarVeiculo(veiculo) {
-  const { itens, orcamento_itens, ...row } = veiculo;
-  row.workspace_id = wsId();
+// Status válidos no CHECK do schema.
+const STATUS_VALIDOS = new Set([
+  'aguardando','em-andamento','aguardando-pecas','pronto','entregue','cancelado'
+]);
 
-  let savedId;
-  if (row.id && !row.id.toString().startsWith('tmp_')) {
-    // UPDATE
-    const updated = await handle(
-      db.from('veiculos').update(row).eq('id', row.id).select().single()
-    );
-    savedId = updated.id;
-  } else {
-    delete row.id;
-    const inserted = await handle(
-      db.from('veiculos').insert(row).select().single()
-    );
-    savedId = inserted.id;
+const soDigitos = s => (s || '').toString().replace(/\D/g, '');
+
+// Combina data (YYYY-MM-DD) + hora (HH:MM) em ISO no fuso local.
+function combinarDataHora(data, hora) {
+  if (!data) return null;
+  const h = (hora && /^\d{1,2}:\d{2}$/.test(hora)) ? hora : '00:00';
+  const d = new Date(`${data}T${h}:00`);
+  return isNaN(d) ? null : d.toISOString();
+}
+
+// Separa um timestamptz ISO em { data: 'YYYY-MM-DD', hora: 'HH:MM' } no fuso local.
+function separarDataHora(iso) {
+  if (!iso) return { data: null, hora: null };
+  const d = new Date(iso);
+  if (isNaN(d)) return { data: null, hora: null };
+  const pad = n => String(n).padStart(2, '0');
+  return {
+    data: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    hora: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+  };
+}
+
+// UI → DB. Devolve apenas colunas reais de `veiculos`.
+function veiculoParaDb(v) {
+  const status = STATUS_VALIDOS.has(v.kanbanStatus) ? v.kanbanStatus
+               : STATUS_VALIDOS.has(v.status)       ? v.status
+               : 'aguardando';
+
+  const entrada_em = v.entrada_em
+    || combinarDataHora(v.dataEntrada, v.horaEntrada)
+    || v.timestampEntrada
+    || null;
+
+  const saida_em = v.saida_em
+    || (v.saida ? combinarDataHora(v.saida.data, v.saida.hora) : null);
+
+  const valor_final = v.valor_final ?? v.saida?.valor ?? null;
+
+  // Tudo que não tem coluna vai para `meta`.
+  const meta = {
+    telefone:        v.telefone || null,
+    cliente_nome:    v.cliente || null,        // fallback p/ leitura sem JOIN
+    registradoPor:   v.registradoPor || null,
+    timestampEntrada:v.timestampEntrada || null,
+    orcamentoStatus: v.orcamentoStatus || null,
+    tempoTrabalhado: v.tempoTrabalhado || 0,
+    vistoria:        v.vistoria || null,
+    saidaPor:        v.saida?.registradoPor || null,
+  };
+
+  return {
+    id:                v.id && !v.id.toString().startsWith('tmp_') ? v.id : undefined,
+    cliente_id:        v.cliente_id || null,
+    placa:             v.placa || null,
+    modelo:            v.modelo || null,
+    cor:               v.cor || null,
+    ano:               v.ano || null,
+    km:                v.km ?? null,
+    servico:           v.servico || null,
+    descricao:         v.descricao || null,
+    status,
+    responsavel_id:    v.responsavel_id || v.mecanicoId || null,
+    valor_orcamento:   v.valor_orcamento ?? v.orcamento ?? null,
+    valor_final,
+    nivel_combustivel: v.nivel_combustivel ?? v.vistoria?.nivel ?? null,
+    entrada_em,
+    saida_em,
+    prazo:             v.prazo || null,
+    nota_numero:       v.nota_numero ?? null,
+    fc_lanc_id:        v.fc_lanc_id || null,
+    meta,
+  };
+}
+
+// DB → UI. Mantém o shape que oficina-manager-v4.html espera.
+function veiculoDoDb(row) {
+  const ent = separarDataHora(row.entrada_em);
+  const sai = separarDataHora(row.saida_em);
+  const meta = row.meta || {};
+
+  // Achar nome do cliente: relação carregada > meta.cliente_nome > cache local.
+  const clienteRel = row.clientes;  // se PostgREST trouxer o JOIN
+  const clienteCache = (DB.clientes || []).find(c => c.id === row.cliente_id);
+  const clienteNome = clienteRel?.nome || clienteCache?.nome || meta.cliente_nome || '';
+  const telefone    = clienteRel?.telefone || clienteCache?.telefone || meta.telefone || '';
+
+  return {
+    ...row,
+    itens:           row.orcamento_itens || [],
+    cliente:         clienteNome,
+    telefone,
+    mecanicoId:      row.responsavel_id || null,
+    orcamento:       row.valor_orcamento ?? 0,
+    kanbanStatus:    row.status,
+    dataEntrada:     ent.data,
+    horaEntrada:     ent.hora,
+    timestampEntrada:meta.timestampEntrada || row.entrada_em,
+    registradoPor:   meta.registradoPor || '',
+    orcamentoStatus: meta.orcamentoStatus || null,
+    tempoTrabalhado: meta.tempoTrabalhado || 0,
+    vistoria:        meta.vistoria || null,
+    saida: row.saida_em ? {
+      data:          sai.data,
+      hora:          sai.hora,
+      valor:         row.valor_final ?? 0,
+      registradoPor: meta.saidaPor || '',
+    } : null,
+  };
+}
+
+// Resolve cliente: procura no cache por telefone (digitos) ou nome.
+// Cria se não existir. Devolve o uuid.
+async function sbResolverCliente({ nome, telefone }) {
+  if (!nome && !telefone) return null;
+  const telDigitos = soDigitos(telefone);
+
+  let achado = null;
+  if (telDigitos) {
+    achado = (DB.clientes || []).find(c => soDigitos(c.telefone) === telDigitos);
+  }
+  if (!achado && nome) {
+    const n = nome.trim().toLowerCase();
+    achado = (DB.clientes || []).find(c => (c.nome || '').trim().toLowerCase() === n);
+  }
+  if (achado) return achado.id;
+
+  // Não existe → cria.
+  const novo = await handle(
+    db.from('clientes').insert({
+      workspace_id: wsId(),
+      nome:         nome || 'Sem nome',
+      telefone:     telefone || null,
+    }).select().single()
+  );
+  DB.clientes = [novo, ...(DB.clientes || [])];
+  return novo.id;
+}
+
+async function sbSalvarVeiculo(veiculo) {
+  // 1. Resolver cliente_id se ainda não tiver.
+  if (!veiculo.cliente_id && (veiculo.cliente || veiculo.telefone)) {
+    veiculo.cliente_id = await sbResolverCliente({
+      nome:     veiculo.cliente,
+      telefone: veiculo.telefone,
+    });
   }
 
-  // Salvar itens do orçamento
+  // 2. Mapear UI → colunas reais.
+  const row = veiculoParaDb(veiculo);
+  row.workspace_id = wsId();
+
+  let saved;
+  if (row.id) {
+    saved = await handle(
+      db.from('veiculos').update(row).eq('id', row.id).select().single()
+    );
+  } else {
+    delete row.id;
+    saved = await handle(
+      db.from('veiculos').insert(row).select().single()
+    );
+  }
+  const savedId = saved.id;
+
+  // 3. Salvar itens do orçamento (tabela separada).
+  const itens = veiculo.itens || veiculo.orcamento_itens;
   if (Array.isArray(itens)) {
     await handle(db.from('orcamento_itens').delete().eq('veiculo_id', savedId));
     if (itens.length > 0) {
@@ -224,9 +375,9 @@ async function sbSalvarVeiculo(veiculo) {
           itens.map((it, i) => ({
             veiculo_id:   savedId,
             workspace_id: wsId(),
-            descricao:    it.descricao || it.desc,
+            descricao:    it.descricao || it.desc || '',
             quantidade:   it.quantidade || it.qtd || 1,
-            preco_unit:   it.preco_unit || it.preco || 0,
+            preco_unit:   it.preco_unit || it.preco || ((it.mo || 0) + (it.pecas || 0)),
             ordem:        i,
           }))
         )
@@ -424,10 +575,17 @@ function aplicarMudancaLocal(tabela, evento, registro) {
   const chave = mapa[tabela];
   if (!chave) return;
 
+  // Para `veiculos`, o payload do realtime vem em snake_case do Postgres
+  // — precisa passar pelo mapper para a UI continuar enxergando dataEntrada,
+  // kanbanStatus, cliente, etc.
+  const normaliza = (tabela === 'veiculos' && registro?.id)
+    ? veiculoDoDb(registro)
+    : registro;
+
   if (evento === 'INSERT') {
-    DB[chave] = [registro, ...DB[chave]];
+    DB[chave] = [normaliza, ...DB[chave]];
   } else if (evento === 'UPDATE') {
-    DB[chave] = DB[chave].map(r => r.id === registro.id ? { ...r, ...registro } : r);
+    DB[chave] = DB[chave].map(r => r.id === normaliza.id ? { ...r, ...normaliza } : r);
   } else if (evento === 'DELETE') {
     DB[chave] = DB[chave].filter(r => r.id !== registro.id);
   }

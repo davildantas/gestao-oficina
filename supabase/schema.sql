@@ -88,6 +88,7 @@ create table public.veiculos (
   prazo         date,
   nota_numero   integer,
   fc_lanc_id    uuid,
+  meta          jsonb not null default '{}'::jsonb,
   criado_em     timestamptz not null default now(),
   atualizado_em timestamptz not null default now()
 );
