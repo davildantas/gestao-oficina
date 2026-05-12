@@ -1294,6 +1294,127 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
   </div>
 </div>
 
+<!-- EDITAR VEÍCULO (admin/sócio) -->
+<div id="modal-edit-veiculo" class="modal-bg" onclick="fecharModal(event,'modal-edit-veiculo')">
+  <div class="modal modal-lg" onclick="event.stopPropagation()">
+    <div class="modal-title">Editar veículo</div>
+    <input type="hidden" id="ev-id">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text3);letter-spacing:.04em;margin-bottom:8px;">Identificação</div>
+    <div class="form-row">
+      <div class="form-group"><label>Placa *</label><input type="text" id="ev-placa" style="text-transform:uppercase;font-family:'DM Mono',monospace;font-weight:600;"></div>
+      <div class="form-group"><label>Modelo *</label><input type="text" id="ev-modelo"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Cor</label><input type="text" id="ev-cor"></div>
+      <div class="form-group"><label>Ano</label><input type="text" id="ev-ano"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Km</label><input type="number" id="ev-km" min="0" step="1"></div>
+      <div class="form-group"><label>Nível de combustível (0–100)</label><input type="number" id="ev-nivel-comb" min="0" max="100" step="1"></div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text3);letter-spacing:.04em;margin:10px 0 8px;">Cliente</div>
+    <div class="form-row">
+      <div class="form-group"><label>Cliente</label><input type="text" id="ev-cliente"></div>
+      <div class="form-group"><label>Telefone</label><input type="text" id="ev-telefone"></div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text3);letter-spacing:.04em;margin:10px 0 8px;">Serviço</div>
+    <div class="form-row">
+      <div class="form-group"><label>Serviço</label><input type="text" id="ev-servico"></div>
+      <div class="form-group"><label>Prazo</label><input type="date" id="ev-prazo"></div>
+    </div>
+    <div class="form-row single"><div class="form-group"><label>Descrição</label><textarea id="ev-descricao"></textarea></div></div>
+    <div class="form-row">
+      <div class="form-group"><label>Status *</label>
+        <select id="ev-status">
+          <option value="aguardando">Aguardando</option>
+          <option value="em-andamento">Em andamento</option>
+          <option value="aguardando-pecas">Aguardando peças</option>
+          <option value="pronto">Pronto</option>
+          <option value="entregue">Entregue</option>
+          <option value="cancelado">Cancelado</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Kanban status</label>
+        <select id="ev-kanban-status">
+          <option value="aguardando">Aguardando</option>
+          <option value="em-andamento">Em andamento</option>
+          <option value="aguardando-pecas">Aguardando peças</option>
+          <option value="pronto">Pronto</option>
+          <option value="entregue">Entregue</option>
+          <option value="cancelado">Cancelado</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Responsável</label><select id="ev-responsavel"><option value="">— Sem vínculo —</option></select></div>
+      <div class="form-group"><label>Mecânico</label><select id="ev-mecanico"><option value="">— Sem vínculo —</option></select></div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text3);letter-spacing:.04em;margin:10px 0 8px;">Datas e horários</div>
+    <div class="form-row">
+      <div class="form-group"><label>Data de entrada</label><input type="date" id="ev-data-entrada"></div>
+      <div class="form-group"><label>Hora de entrada</label><input type="time" id="ev-hora-entrada"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Data de saída</label><input type="date" id="ev-data-saida"></div>
+      <div class="form-group"><label>Hora de saída</label><input type="time" id="ev-hora-saida"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Entrada (timestamp)</label><input type="datetime-local" id="ev-entrada-em"></div>
+      <div class="form-group"><label>Saída (timestamp)</label><input type="datetime-local" id="ev-saida-em"></div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text3);letter-spacing:.04em;margin:10px 0 8px;">Valores</div>
+    <div class="form-row">
+      <div class="form-group"><label>Valor orçamento</label><input type="number" id="ev-valor-orcamento" step="0.01" min="0"></div>
+      <div class="form-group"><label>Valor final</label><input type="number" id="ev-valor-final" step="0.01" min="0"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Valor</label><input type="number" id="ev-valor" step="0.01" min="0"></div>
+      <div class="form-group"><label>Orçamento</label><input type="number" id="ev-orcamento" step="0.01" min="0"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Status orçamento</label>
+        <select id="ev-orcamento-status">
+          <option value="">—</option>
+          <option value="pendente">Pendente</option>
+          <option value="aprovado">Aprovado</option>
+          <option value="recusado">Recusado</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Forma de pagamento</label>
+        <select id="ev-forma-pagamento">
+          <option value="">—</option>
+          <option>PIX</option>
+          <option>Dinheiro</option>
+          <option>Cartão débito</option>
+          <option>Cartão crédito</option>
+          <option>Transferência</option>
+          <option>Cheque</option>
+          <option>A receber</option>
+          <option value="seguradora">Seguradora</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Nº da nota</label><input type="number" id="ev-nota-numero" min="0" step="1"></div>
+      <div class="form-group"><label></label></div>
+    </div>
+    <div class="form-row single"><div class="form-group"><label>Notas</label><textarea id="ev-notas"></textarea></div></div>
+
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text3);letter-spacing:.04em;margin:10px 0 8px;">Cancelamento</div>
+    <label class="check-item" style="margin-bottom:8px;"><input type="checkbox" id="ev-cancelado" onchange="document.getElementById('ev-motivo-cancel-wrap').style.display=this.checked?'':'none'"> Veículo / OS cancelada</label>
+    <div id="ev-motivo-cancel-wrap" class="form-row single" style="display:none;"><div class="form-group"><label>Motivo do cancelamento</label><textarea id="ev-motivo-cancel"></textarea></div></div>
+
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="fecharModalId('modal-edit-veiculo')">Cancelar</button>
+      <button class="btn-primary" onclick="salvarEdicaoVeiculo(this)">Salvar alterações</button>
+    </div>
+  </div>
+</div>
+
 <!-- EDITAR DATA DE ENTRADA (somente dono/sócio) -->
 <div id="modal-edit-entrada" class="modal-bg" onclick="fecharModal(event,'modal-edit-entrada')">
   <div class="modal" onclick="event.stopPropagation()">
@@ -2380,6 +2501,159 @@ async function salvarEditarDataEntrada(){
   });
 }
 
+/* ─── EDIÇÃO COMPLETA DE VEÍCULO (admin/socio) ───────────────────────── */
+async function verificarPermissaoEdicao(){
+  try{
+    const { data: { user } } = await db.auth.getUser();
+    if(!user) return false;
+    const { data: profile, error } = await db.from('profiles').select('role').eq('id', user.id).single();
+    if(error) return false;
+    return ['admin','socio'].includes(profile?.role);
+  }catch(_e){ return false; }
+}
+
+function _evIsoToLocal(iso){
+  if(!iso) return '';
+  const d=new Date(iso); if(isNaN(d)) return '';
+  const p=n=>String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes());
+}
+function _evLocalToIso(local){
+  if(!local) return null;
+  const d=new Date(local); return isNaN(d)?null:d.toISOString();
+}
+function _evNumOrNull(id){
+  const el=document.getElementById(id); if(!el) return null;
+  const v=el.value.trim(); if(v==='') return null;
+  const n=Number(v); return isFinite(n)?n:null;
+}
+function _evStrOrNull(id){
+  const el=document.getElementById(id); if(!el) return null;
+  const v=(el.value||'').trim(); return v===''?null:v;
+}
+function _evPreencherColabSelect(selId, valor){
+  const sel=document.getElementById(selId);
+  const ativos=(DB.colabs||[]).filter(c=>c.ativo!==false);
+  sel.innerHTML='<option value="">— Sem vínculo —</option>'+
+    ativos.map(c=>`<option value="${esc(c.id)}">${esc(c.nome||c.username||c.id)}</option>`).join('');
+  if(valor!=null) sel.value=valor;
+}
+
+async function abrirEditarVeiculo(id){
+  const ok=await verificarPermissaoEdicao();
+  if(!ok){ toast('Acesso negado: apenas admin ou sócio podem editar veículos','error'); return; }
+  const v=veiculos.find(x=>x.id===id);
+  if(!v){ toast('Veículo não encontrado','error'); return; }
+  // Buscar a linha bruta para campos não mapeados (notas, valor, cancelado, etc.)
+  let row=null;
+  try{ row=await handle(db.from('veiculos').select('*').eq('id', id).single()); }
+  catch(_e){ row={}; }
+
+  const g=(k)=>row && row[k]!=null ? row[k] : '';
+  document.getElementById('ev-id').value=id;
+  document.getElementById('ev-placa').value=v.placa||g('placa')||'';
+  document.getElementById('ev-modelo').value=v.modelo||g('modelo')||'';
+  document.getElementById('ev-cor').value=v.cor||g('cor')||'';
+  document.getElementById('ev-ano').value=v.ano||g('ano')||'';
+  document.getElementById('ev-km').value=v.km!=null?v.km:(g('km')||'');
+  document.getElementById('ev-nivel-comb').value=row?.nivel_combustivel!=null?row.nivel_combustivel:(v.vistoria?.nivel ?? '');
+  document.getElementById('ev-cliente').value=v.cliente||g('cliente')||'';
+  document.getElementById('ev-telefone').value=v.telefone||g('telefone')||'';
+  document.getElementById('ev-servico').value=v.servico||g('servico')||'';
+  document.getElementById('ev-prazo').value=g('prazo')||'';
+  document.getElementById('ev-descricao').value=v.descricao||g('descricao')||'';
+  document.getElementById('ev-status').value=row?.status||v.kanbanStatus||'aguardando';
+  document.getElementById('ev-kanban-status').value=row?.kanban_status||v.kanbanStatus||'aguardando';
+  _evPreencherColabSelect('ev-responsavel', row?.responsavel_id||null);
+  _evPreencherColabSelect('ev-mecanico', row?.mecanico_id||v.mecanicoId||null);
+
+  document.getElementById('ev-data-entrada').value=row?.data_entrada||v.dataEntrada||'';
+  document.getElementById('ev-hora-entrada').value=row?.hora_entrada||v.horaEntrada||'';
+  document.getElementById('ev-data-saida').value=row?.data_saida||(v.saida?.data||'');
+  document.getElementById('ev-hora-saida').value=row?.hora_saida||(v.saida?.hora||'');
+  document.getElementById('ev-entrada-em').value=_evIsoToLocal(row?.entrada_em);
+  document.getElementById('ev-saida-em').value=_evIsoToLocal(row?.saida_em);
+
+  document.getElementById('ev-valor-orcamento').value=row?.valor_orcamento!=null?row.valor_orcamento:'';
+  document.getElementById('ev-valor-final').value=row?.valor_final!=null?row.valor_final:'';
+  document.getElementById('ev-valor').value=row?.valor!=null?row.valor:'';
+  document.getElementById('ev-orcamento').value=row?.orcamento!=null?row.orcamento:'';
+  document.getElementById('ev-orcamento-status').value=row?.orcamento_status||v.orcamentoStatus||'';
+  document.getElementById('ev-forma-pagamento').value=row?.forma_pagamento||(v.saida?.pgto||'');
+  document.getElementById('ev-nota-numero').value=row?.nota_numero!=null?row.nota_numero:'';
+  document.getElementById('ev-notas').value=row?.notas||'';
+
+  const canc=!!row?.cancelado;
+  document.getElementById('ev-cancelado').checked=canc;
+  document.getElementById('ev-motivo-cancel').value=row?.motivo_cancel||'';
+  document.getElementById('ev-motivo-cancel-wrap').style.display=canc?'':'none';
+
+  document.getElementById('modal-edit-veiculo').classList.add('show');
+}
+
+async function salvarEdicaoVeiculo(btn){
+  const ok=await verificarPermissaoEdicao();
+  if(!ok){ toast('Acesso negado: apenas admin ou sócio podem editar veículos','error'); return; }
+  const id=document.getElementById('ev-id').value;
+  if(!id){ toast('ID do veículo ausente','error'); return; }
+
+  const placa=(document.getElementById('ev-placa').value||'').trim().toUpperCase();
+  const modelo=(document.getElementById('ev-modelo').value||'').trim();
+  const status=document.getElementById('ev-status').value;
+  if(!placa){ toast('Placa é obrigatória','error'); return; }
+  if(!modelo){ toast('Modelo é obrigatório','error'); return; }
+  if(!status){ toast('Status é obrigatório','error'); return; }
+
+  const cancelado=document.getElementById('ev-cancelado').checked;
+  const update={
+    placa, modelo, status,
+    cor: _evStrOrNull('ev-cor'),
+    ano: _evStrOrNull('ev-ano'),
+    km: _evNumOrNull('ev-km'),
+    nivel_combustivel: _evNumOrNull('ev-nivel-comb'),
+    cliente: _evStrOrNull('ev-cliente'),
+    telefone: _evStrOrNull('ev-telefone'),
+    servico: _evStrOrNull('ev-servico'),
+    descricao: _evStrOrNull('ev-descricao'),
+    kanban_status: _evStrOrNull('ev-kanban-status'),
+    prazo: _evStrOrNull('ev-prazo'),
+    responsavel_id: _evStrOrNull('ev-responsavel'),
+    mecanico_id: _evStrOrNull('ev-mecanico'),
+    data_entrada: _evStrOrNull('ev-data-entrada'),
+    hora_entrada: _evStrOrNull('ev-hora-entrada'),
+    data_saida: _evStrOrNull('ev-data-saida'),
+    hora_saida: _evStrOrNull('ev-hora-saida'),
+    entrada_em: _evLocalToIso(document.getElementById('ev-entrada-em').value),
+    saida_em: _evLocalToIso(document.getElementById('ev-saida-em').value),
+    valor_orcamento: _evNumOrNull('ev-valor-orcamento'),
+    valor_final: _evNumOrNull('ev-valor-final'),
+    valor: _evNumOrNull('ev-valor'),
+    orcamento: _evNumOrNull('ev-orcamento'),
+    orcamento_status: _evStrOrNull('ev-orcamento-status'),
+    forma_pagamento: _evStrOrNull('ev-forma-pagamento'),
+    nota_numero: _evNumOrNull('ev-nota-numero'),
+    notas: _evStrOrNull('ev-notas'),
+    cancelado,
+    motivo_cancel: cancelado ? _evStrOrNull('ev-motivo-cancel') : null,
+    atualizado_em: new Date().toISOString(),
+  };
+
+  await withLock('edit-veiculo-'+id, async()=>{
+    await safeOp('Erro ao salvar veículo', async()=>{
+      const updated=await handle(db.from('veiculos').update(update).eq('id', id).select('*, orcamento_itens(*)').single());
+      const novo=veiculoDoDb(updated);
+      const idx=veiculos.findIndex(x=>x.id===id);
+      if(idx>=0) veiculos[idx]=novo; else veiculos.push(novo);
+      const dbIdx=(DB.veiculos||[]).findIndex(x=>x.id===id);
+      if(dbIdx>=0) DB.veiculos[dbIdx]=novo;
+      logAudit('editar-veiculo', `${novo.placa} · ${novo.modelo} (por ${session.username})`);
+      fecharModalId('modal-edit-veiculo');
+      atualizarVeiculos(); atualizarKanban(); atualizarDashboard();
+      toast('Veículo atualizado','success');
+    },{btn});
+  });
+}
+
 function setHistFiltro(f,btn){histFiltro=f;document.querySelectorAll('#panel-veiculos .filter-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');atualizarHistorico();}
 function atualizarHistorico(){
   let lista=[...veiculos].sort((a,b)=>(b.dataEntrada+b.horaEntrada).localeCompare(a.dataEntrada+a.horaEntrada));
@@ -2396,7 +2670,7 @@ function atualizarHistorico(){
       <td class="mono" style="font-size:12px;">${fmtData(v.dataEntrada)} ${v.horaEntrada}</td>
       <td class="mono" style="font-size:12px;">${v.saida?fmtData(v.saida.data)+' '+v.saida.hora:'-'}</td>
       <td class="mono" style="font-size:12px;">${v.saida&&v.saida.valor?fmtBRL(v.saida.valor):'-'}</td>
-      <td style="text-align:right;white-space:nowrap;"><button class="btn-edit" onclick="abrirDetalhes('${v.id}')">Detalhes</button>${!v.saida?`<button class="btn-saida" onclick="abrirModalSaida('${v.id}')">Saída</button><button class="btn-cancel-os" onclick="abrirCancelarOS('${v.id}')" title="Cancelar OS">✕</button>`:''}</td>
+      <td style="text-align:right;white-space:nowrap;"><button class="btn-edit" onclick="abrirDetalhes('${v.id}')">Detalhes</button><button class="btn-edit" onclick="abrirEditarVeiculo('${v.id}')" title="Editar">✏️</button>${!v.saida?`<button class="btn-saida" onclick="abrirModalSaida('${v.id}')">Saída</button><button class="btn-cancel-os" onclick="abrirCancelarOS('${v.id}')" title="Cancelar OS">✕</button>`:''}</td>
     </tr>`).join('')}</tbody></table>`;
 }
 function atualizarVeiculos(){
@@ -2419,7 +2693,7 @@ function atualizarVeiculos(){
         <td><span class="badge ${v.kanbanStatus||'aguardando'}" style="font-size:9px;">${kanbanLabel(v.kanbanStatus)}</span></td>
         <td class="mono" style="font-size:12px;">${fmtData(v.dataEntrada)} ${v.horaEntrada}</td>
         <td class="mono" style="font-size:12px;">${fmtMin(t)}</td>
-        <td style="text-align:right;white-space:nowrap;"><button class="btn-edit" onclick="abrirDetalhes('${v.id}')">Detalhes</button><button class="btn-saida" onclick="abrirModalSaida('${v.id}')">Registrar saída</button><button class="btn-cancel-os" onclick="abrirCancelarOS('${v.id}')" title="Cancelar / Excluir OS">✕</button></td>
+        <td style="text-align:right;white-space:nowrap;"><button class="btn-edit" onclick="abrirDetalhes('${v.id}')">Detalhes</button><button class="btn-edit" onclick="abrirEditarVeiculo('${v.id}')" title="Editar">✏️</button><button class="btn-saida" onclick="abrirModalSaida('${v.id}')">Registrar saída</button><button class="btn-cancel-os" onclick="abrirCancelarOS('${v.id}')" title="Cancelar / Excluir OS">✕</button></td>
       </tr>`;
     }).join('')}</tbody></table>`;
   atualizarHistorico();
