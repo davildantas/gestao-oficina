@@ -5105,11 +5105,11 @@ entrarApp = function(){
 /* SISTEMA DE CONTROLE DE ACESSO POR ROLE             */
 /* ═══════════════════════════════════════════════════ */
 const ROLE_ACCESS = {
-  dono:        ['dashboard','kanban','veiculos','agenda','clientes','estoque','colaboradores','salarios','fluxo-caixa','fila-espera','comunicacao','relatorio','relatorios-adv','config','auditoria'],
-  socio:       ['dashboard','kanban','veiculos','agenda','clientes','estoque','colaboradores','salarios','fluxo-caixa','fila-espera','comunicacao','relatorio','relatorios-adv','config','auditoria'],
-  gerente:     ['dashboard','kanban','veiculos','agenda','clientes','estoque','colaboradores','salarios','fluxo-caixa','fila-espera','comunicacao','relatorio','relatorios-adv'],
-  assistente:  ['estoque','fila-espera','comunicacao'],
-  colaborador: ['dashboard','fila-espera','comunicacao'],
+  dono:        ['dashboard','kanban','veiculos','agenda','clientes','estoque','colaboradores','salarios','fluxo-caixa','fila-espera','comunicacao','relatorio','relatorios-adv','config','auditoria','mecanicos','materiais-os','planejamento','fincontrol'],
+  socio:       ['dashboard','kanban','veiculos','agenda','clientes','estoque','colaboradores','salarios','fluxo-caixa','fila-espera','comunicacao','relatorio','relatorios-adv','config','auditoria','mecanicos','materiais-os','planejamento','fincontrol'],
+  gerente:     ['dashboard','kanban','veiculos','agenda','clientes','estoque','colaboradores','salarios','fluxo-caixa','fila-espera','comunicacao','relatorio','relatorios-adv','mecanicos','materiais-os','planejamento'],
+  assistente:  ['estoque','fila-espera','comunicacao','mecanicos','materiais-os'],
+  colaborador: ['dashboard','fila-espera','comunicacao','mecanicos','materiais-os'],
 };
 
 // Painéis financeiros onde gerente tem acesso limitado (somente leitura)
