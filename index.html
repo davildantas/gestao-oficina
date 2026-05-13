@@ -24,6 +24,7 @@ let DB = {
   config: {}, clientes: [], agenda: [], estoque: [], auditoria: [],
   metas: {}, fila: [], fotos: {}, parcelas: [], notas: [], satisf: [],
   lancamentos: [], categorias: { entrada: [], saida: [] },
+  materiaisOs: [],
 };
 
 function wsId() {
@@ -193,6 +194,13 @@ async function carregarTudo() {
   for (const f of fotosArr) {
     if (!DB.fotos[f.veiculo_id]) DB.fotos[f.veiculo_id] = [];
     DB.fotos[f.veiculo_id].push(f.url || f.storage_path);
+  }
+  // materiais_os (Task 3) — opcional: tabela pode não existir ainda
+  try {
+    DB.materiaisOs = await handle(db.from('materiais_os').select('*').eq('workspace_id', wid));
+  } catch (e) {
+    console.warn('[materiais_os] tabela ainda não criada — rode supabase/migrations/melhorias-2026-05.sql');
+    DB.materiaisOs = [];
   }
 }
 
@@ -389,7 +397,7 @@ async function sbAlterarRoleUsuario(userId, novoRole) {
 
 function sbInscreverRealtime(onUpdate) {
   const wid = wsId();
-  ['veiculos','pagamentos','estoque','agenda','fila','notas','estoque_movimentacoes'].forEach(tabela => {
+  ['veiculos','pagamentos','estoque','agenda','fila','notas','estoque_movimentacoes','materiais_os'].forEach(tabela => {
     db.channel('realtime:'+tabela+':'+wid)
       .on('postgres_changes', { event: '*', schema: 'public', table: tabela, filter: 'workspace_id=eq.'+wid },
         payload => {
@@ -401,7 +409,7 @@ function sbInscreverRealtime(onUpdate) {
 }
 
 function aplicarMudancaLocal(tabela, evento, registro) {
-  const chave = { veiculos:'veiculos', pagamentos:'pagamentos', estoque:'estoque', agenda:'agenda', fila:'fila', notas:'notas' }[tabela];
+  const chave = { veiculos:'veiculos', pagamentos:'pagamentos', estoque:'estoque', agenda:'agenda', fila:'fila', notas:'notas', materiais_os:'materiaisOs' }[tabela];
   if (!chave) return;
   // veiculos vem do Postgres em snake_case — passar pelo mapper p/ a UI ler dataEntrada, kanbanStatus, etc.
   const norm = (tabela === 'veiculos' && registro && registro.id) ? veiculoDoDb(registro) : registro;
@@ -607,6 +615,36 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .danger-box{padding:10px 14px;background:var(--red-bg);border-radius:var(--radius);font-size:13px;color:var(--red-dark);margin-bottom:10px;line-height:1.5;display:none}
 .danger-box.show{display:block}
 .chart-wrap{position:relative;height:240px}
+/* ===== TABS (modal de colaborador, etc.) ===== */
+.tabs-bar{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:14px;flex-wrap:wrap}
+.tab-btn{padding:9px 14px;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text2);font-weight:500;transition:all .15s}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--green-dark);border-bottom-color:var(--green)}
+.tab-pane{display:none}
+.tab-pane.active{display:block}
+/* ===== Mecânicos board / Materiais OS / Planejamento ===== */
+.mec-board{display:flex;gap:14px;overflow-x:auto;padding-bottom:1rem;align-items:flex-start}
+.mos-row{display:grid;grid-template-columns:1fr 80px 90px 100px 36px;gap:6px;align-items:center;font-size:13px;padding:6px 0;border-bottom:1px solid var(--border)}
+.mos-row-head{font-size:11px;font-weight:600;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border)}
+.doc-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)}
+.doc-row:last-child{border-bottom:none}
+.doc-row .doc-label{flex:1;font-size:13px}
+.doc-pill{padding:4px 10px;border-radius:14px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--border2);background:var(--surface);color:var(--text2);transition:all .15s}
+.doc-pill.active.pendente{background:var(--orange-bg);color:var(--orange);border-color:var(--orange)}
+.doc-pill.active.recebido{background:var(--green-bg);color:var(--green-dark);border-color:var(--green)}
+.doc-pill.active.vencido{background:var(--red-bg);color:var(--red-dark);border-color:var(--red)}
+.docs-badge{display:inline-block;width:9px;height:9px;border-radius:50%;margin-left:4px;vertical-align:middle}
+.docs-badge.verde{background:var(--green)}
+.docs-badge.amarelo{background:var(--orange)}
+.docs-badge.cinza{background:var(--text3)}
+.plan-grid{display:grid;gap:10px;margin-bottom:1.5rem;overflow-x:auto}
+.plan-day{background:var(--surface);border-radius:var(--radius);padding:12px;min-height:180px;border:1px solid var(--border)}
+.plan-day.is-hoje{border:2px solid var(--green)}
+.plan-day.is-pass-fail{border-color:var(--red)}
+.plan-day.is-pass-ok{border-color:var(--green)}
+/* ===== FinControl iframe ===== */
+.fc-iframe-wrap{width:100%;height:calc(100vh - 110px);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;background:var(--surface)}
+.fc-iframe-wrap iframe{width:100%;height:100%;border:0;display:block}
 .audit-row{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px;align-items:flex-start}
 .audit-row:last-child{border-bottom:none}
 .audit-ts{color:var(--text3);font-family:'DM Mono',monospace;white-space:nowrap;font-size:11px}
@@ -788,6 +826,12 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
       <div class="nav-section">Operacional</div>
       <button class="nav-item" data-panel="fila-espera" data-role="dono,socio,gerente,assistente,colaborador" onclick="showPanel('fila-espera',this)"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>Fila de Espera<span class="nav-badge" id="badge-fila" style="display:none;"></span></button>
       <button class="nav-item" data-panel="comunicacao" data-role="dono,socio,gerente,assistente,colaborador" onclick="showPanel('comunicacao',this)"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>Comunicação<span class="nav-badge" id="badge-aniversarios" style="display:none;"></span></button>
+      <div class="nav-section" data-role="dono,socio,gerente,assistente,colaborador">Oficina</div>
+      <button class="nav-item" data-panel="mecanicos" data-role="dono,socio,gerente,assistente,colaborador" onclick="showPanel('mecanicos',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>Mecânicos</button>
+      <button class="nav-item" data-panel="materiais-os" data-role="dono,socio,gerente,assistente,colaborador" onclick="showPanel('materiais-os',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-5 14H4v-4h11v4zm0-5H4V9h11v4zm5 5h-4V9h4v9z"/></svg>Materiais por OS</button>
+      <button class="nav-item" data-panel="planejamento" data-role="dono,socio,gerente" onclick="showPanel('planejamento',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg>Planejamento</button>
+      <div class="nav-section" data-role="dono,socio">FinControl</div>
+      <button class="nav-item" data-panel="fincontrol" data-role="dono,socio" onclick="showPanel('fincontrol',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>FinControl Pro</button>
       <div class="nav-section" data-role="dono,socio">Sistema</div>
       <button class="nav-item" data-panel="config" data-role="dono,socio" onclick="showPanel('config',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/></svg>Configurações</button>
       <button class="nav-item" data-panel="auditoria" data-role="dono,socio" onclick="showPanel('auditoria',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>Auditoria</button>
@@ -1140,6 +1184,44 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
       </div>
     </div>
 
+    <!-- KANBAN DOS MECÂNICOS -->
+    <div id="panel-mecanicos" class="panel">
+      <div class="page-header">
+        <div><div class="page-title">Kanban dos Mecânicos</div><div class="page-sub">Distribuição de OS por mecânico em tempo real</div></div>
+        <button class="btn-secondary" onclick="renderMecanicosBoard()">↻ Atualizar</button>
+      </div>
+      <div id="mecanicos-empty-warn" class="warn-box" style="display:none">
+        Nenhum colaborador com cargo "Mecânico" cadastrado.
+        <span onclick="showPanel('colaboradores',document.querySelector('[data-panel=colaboradores]'))" style="cursor:pointer;font-weight:600;text-decoration:underline">Cadastrar →</span>
+      </div>
+      <div id="mecanicos-board" class="mec-board"></div>
+    </div>
+
+    <!-- MATERIAIS POR OS -->
+    <div id="panel-materiais-os" class="panel">
+      <div class="page-header">
+        <div><div class="page-title">Materiais por OS</div><div class="page-sub">Saída de estoque vinculada ao veículo</div></div>
+        <input type="text" id="mos-busca" placeholder="Buscar placa, modelo ou cliente..." oninput="renderMateriaisOs()" style="height:38px;padding:0 12px;border:1px solid var(--border2);border-radius:var(--radius);font-size:13px;width:260px;background:var(--surface);color:var(--text);font-family:'DM Sans',sans-serif;outline:none">
+      </div>
+      <div id="mos-list"></div>
+    </div>
+
+    <!-- PLANEJAMENTO DA SEMANA -->
+    <div id="panel-planejamento" class="panel"></div>
+
+    <!-- FINCONTROL PRO (iframe) -->
+    <div id="panel-fincontrol" class="panel">
+      <div class="page-header">
+        <div><div class="page-title">FinControl Pro</div><div class="page-sub">Sistema financeiro completo — dados em localStorage do navegador</div></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-secondary" onclick="fcAbrirNovaAba()">↗ Abrir em nova aba</button>
+          <button class="btn-secondary" onclick="fcRecarregarIframe()">↻ Recarregar</button>
+        </div>
+      </div>
+      <div id="fc-banner" class="info-box" style="display:none"></div>
+      <div class="fc-iframe-wrap"><iframe id="fc-iframe" src="about:blank" title="FinControl Pro"></iframe></div>
+    </div>
+
     <!-- AUDITORIA -->
     <div id="panel-auditoria" class="panel">
       <div class="page-header"><div><div class="page-title">Log de Auditoria</div><div class="page-sub">Registro de todas as ações importantes</div></div><button class="btn-secondary" onclick="limparAuditoria()">Limpar log</button></div>
@@ -1435,15 +1517,107 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 
 <!-- COLABORADOR -->
 <div id="modal-colab" class="modal-bg" onclick="fecharModal(event,'modal-colab')">
-  <div class="modal" onclick="event.stopPropagation()">
+  <div class="modal modal-lg" onclick="event.stopPropagation()">
     <div class="modal-title" id="modal-colab-title">Novo colaborador</div>
     <input type="hidden" id="colab-id">
-    <div class="form-row"><div class="form-group"><label>Nome completo *</label><input type="text" id="colab-nome" placeholder="João da Silva"></div><div class="form-group"><label>CPF</label><input type="text" id="colab-cpf" placeholder="000.000.000-00"></div></div>
-    <div class="form-row"><div class="form-group"><label>Telefone</label><input type="text" id="colab-tel" placeholder="(00) 00000-0000"></div><div class="form-group"><label>Cargo / Função</label><select id="colab-cargo"><option>Funileiro</option><option>Pintor</option><option>Auxiliar</option><option>Mecânico</option><option>Gerente</option><option>Administrativo</option><option>Outros</option></select></div></div>
-    <div class="form-row"><div class="form-group"><label>Salário fixo mensal (R$) *</label><input type="number" id="colab-salario" step="0.01" min="0" placeholder="0,00"></div><div class="form-group"><label>% Comissão por OS</label><input type="number" id="colab-comissao" step="0.1" min="0" max="100" placeholder="Ex: 5.0"></div></div>
-    <div class="form-row"><div class="form-group"><label>Forma de pagamento</label><select id="colab-pgto"><option>PIX</option><option>Transferência bancária</option><option>Dinheiro</option><option>Cheque</option><option>Outro</option></select></div><div class="form-group"><label>Chave PIX / Banco</label><input type="text" id="colab-banco" placeholder="CPF, e-mail, telefone..."></div></div>
-    <div class="form-row single"><div class="form-group"><label>Status</label><select id="colab-status"><option value="ativo">Ativo</option><option value="inativo">Inativo</option></select></div></div>
+
+    <div class="tabs-bar" id="colab-tabs">
+      <button type="button" class="tab-btn active" data-tab="pessoal" data-role-tab="dono,socio" onclick="setColabTab('pessoal',this)">Pessoal</button>
+      <button type="button" class="tab-btn" data-tab="contato" onclick="setColabTab('contato',this)">Contato</button>
+      <button type="button" class="tab-btn" data-tab="endereco" onclick="setColabTab('endereco',this)">Endereço</button>
+      <button type="button" class="tab-btn" data-tab="bancario" data-role-tab="dono,socio" onclick="setColabTab('bancario',this)">Bancário</button>
+      <button type="button" class="tab-btn" data-tab="profissional" onclick="setColabTab('profissional',this)">Profissional</button>
+      <button type="button" class="tab-btn" data-tab="documentos" onclick="setColabTab('documentos',this)">Documentos</button>
+    </div>
+
+    <!-- ABA PESSOAL -->
+    <div class="tab-pane active" data-pane="pessoal">
+      <div class="form-row"><div class="form-group"><label>Nome completo *</label><input type="text" id="colab-nome" placeholder="João da Silva"></div><div class="form-group"><label>CPF</label><input type="text" id="colab-cpf" placeholder="000.000.000-00" maxlength="14" oninput="maskCPF(this)"></div></div>
+      <div class="form-row triple"><div class="form-group"><label>RG</label><input type="text" id="colab-rg" placeholder="00.000.000-0"></div><div class="form-group"><label>Órgão emissor</label><input type="text" id="colab-rg-orgao" placeholder="SSP"></div><div class="form-group"><label>UF</label><input type="text" id="colab-rg-uf" placeholder="SP" maxlength="2" style="text-transform:uppercase"></div></div>
+      <div class="form-row"><div class="form-group"><label>Data de nascimento</label><input type="date" id="colab-nasc" onchange="atualizarIdadeColab()"><div id="colab-idade" style="font-size:11px;color:var(--text3);margin-top:3px"></div></div><div class="form-group"><label>Naturalidade</label><input type="text" id="colab-naturalidade" placeholder="Cidade / UF de nascimento"></div></div>
+      <div class="form-row"><div class="form-group"><label>Nacionalidade</label><input type="text" id="colab-nacionalidade" value="Brasileiro"></div><div class="form-group"><label>Estado civil</label><select id="colab-estado-civil"><option value="">—</option><option>Solteiro</option><option>Casado</option><option>Divorciado</option><option>Viúvo</option><option>União estável</option></select></div></div>
+      <div class="form-row"><div class="form-group"><label>Nome da mãe</label><input type="text" id="colab-nome-mae"></div><div class="form-group"><label>Nome do pai</label><input type="text" id="colab-nome-pai"></div></div>
+    </div>
+
+    <!-- ABA CONTATO -->
+    <div class="tab-pane" data-pane="contato">
+      <div class="form-row"><div class="form-group"><label>Telefone celular</label><input type="text" id="colab-tel" placeholder="(00) 00000-0000"></div><div class="form-group"><label>Telefone fixo / recado</label><input type="text" id="colab-tel-fixo" placeholder="(00) 0000-0000"></div></div>
+      <div class="form-row"><div class="form-group"><label>E-mail pessoal</label><input type="email" id="colab-email-pessoal" placeholder="joao@email.com"></div><div class="form-group"><label>E-mail corporativo</label><input type="email" id="colab-email-corp" placeholder="joao@oficina.com"></div></div>
+    </div>
+
+    <!-- ABA ENDEREÇO -->
+    <div class="tab-pane" data-pane="endereco">
+      <div class="form-row"><div class="form-group"><label>CEP</label><div style="display:flex;gap:6px"><input type="text" id="colab-cep" placeholder="00000-000" maxlength="9" style="flex:1"><button type="button" class="btn-secondary" onclick="buscarCEPColab()" style="white-space:nowrap">Buscar</button></div></div><div class="form-group"><label>Logradouro</label><input type="text" id="colab-logradouro"></div></div>
+      <div class="form-row triple"><div class="form-group"><label>Número</label><input type="text" id="colab-numero-end"></div><div class="form-group"><label>Complemento</label><input type="text" id="colab-complemento"></div><div class="form-group"><label>Bairro</label><input type="text" id="colab-bairro"></div></div>
+      <div class="form-row"><div class="form-group"><label>Cidade</label><input type="text" id="colab-cidade"></div><div class="form-group"><label>Estado (UF)</label><input type="text" id="colab-estado-uf" maxlength="2" style="text-transform:uppercase"></div></div>
+    </div>
+
+    <!-- ABA BANCÁRIO -->
+    <div class="tab-pane" data-pane="bancario">
+      <div class="form-row"><div class="form-group"><label>Banco</label><select id="colab-banco-sel"><option value="">—</option><option>Itaú</option><option>Bradesco</option><option>Santander</option><option>Nubank</option><option>BTG Pactual</option><option>Caixa Econômica</option><option>Banco do Brasil</option><option>Inter</option><option>C6 Bank</option><option>Sicoob</option><option>Sicredi</option><option>Outros</option></select></div><div class="form-group"><label>Tipo de conta</label><select id="colab-tipo-conta"><option value="">—</option><option>Corrente</option><option>Poupança</option></select></div></div>
+      <div class="form-row"><div class="form-group"><label>Agência</label><input type="text" id="colab-agencia"></div><div class="form-group"><label>Conta</label><input type="text" id="colab-conta-bancaria"></div></div>
+      <div class="form-row"><div class="form-group"><label>Tipo chave PIX</label><select id="colab-pix-tipo"><option value="">—</option><option>CPF</option><option>Telefone</option><option>E-mail</option><option>Chave aleatória</option></select></div><div class="form-group"><label>Chave PIX</label><input type="text" id="colab-banco" placeholder="CPF, e-mail, telefone..."></div></div>
+    </div>
+
+    <!-- ABA PROFISSIONAL -->
+    <div class="tab-pane" data-pane="profissional">
+      <div class="form-row"><div class="form-group"><label>Cargo / Função</label><select id="colab-cargo"><option>Funileiro</option><option>Pintor</option><option>Auxiliar</option><option>Mecânico</option><option>Gerente</option><option>Administrativo</option><option>Outros</option></select></div><div class="form-group"><label>Data de admissão</label><input type="date" id="colab-data-admissao"></div></div>
+      <div class="form-row triple"><div class="form-group"><label>Nº CTPS</label><input type="text" id="colab-ctps"></div><div class="form-group"><label>Série</label><input type="text" id="colab-ctps-serie"></div><div class="form-group"><label>UF</label><input type="text" id="colab-ctps-uf" maxlength="2" style="text-transform:uppercase"></div></div>
+      <div class="form-row"><div class="form-group"><label>PIS / PASEP</label><input type="text" id="colab-pis-pasep"></div><div class="form-group"><label>Forma de pagamento</label><select id="colab-pgto"><option>PIX</option><option>Transferência bancária</option><option>Dinheiro</option><option>Cheque</option><option>Outro</option></select></div></div>
+      <div class="form-row"><div class="form-group"><label>Salário fixo mensal (R$) *</label><input type="number" id="colab-salario" step="0.01" min="0" placeholder="0,00"></div><div class="form-group"><label>% Comissão por OS</label><input type="number" id="colab-comissao" step="0.1" min="0" max="100" placeholder="Ex: 5.0"></div></div>
+      <div class="form-row"><div class="form-group"><label>Status</label><select id="colab-status" onchange="toggleColabDesligamento()"><option value="ativo">Ativo</option><option value="inativo">Inativo</option></select></div><div class="form-group" id="colab-desl-grp" style="display:none"><label>Data de desligamento</label><input type="date" id="colab-data-desligamento"></div></div>
+      <div class="form-row single" id="colab-motivo-grp" style="display:none"><div class="form-group"><label>Motivo do desligamento</label><textarea id="colab-motivo-desligamento" placeholder="Descreva o motivo..."></textarea></div></div>
+    </div>
+
+    <!-- ABA DOCUMENTOS -->
+    <div class="tab-pane" data-pane="documentos">
+      <div style="font-size:12px;color:var(--text3);margin-bottom:10px;line-height:1.5">Marque o status de cada documento. O sistema calcula automaticamente o badge de completude na lista de colaboradores.</div>
+      <div id="colab-docs-list"></div>
+    </div>
+
     <div class="modal-actions"><button class="btn-secondary" onclick="fecharModalId('modal-colab')">Cancelar</button><button class="btn-primary" onclick="salvarColab()">Salvar</button></div>
+  </div>
+</div>
+
+<!-- MODAL ADICIONAR MATERIAL EM OS -->
+<div id="modal-mos-add" class="modal-bg" onclick="fecharModal(event,'modal-mos-add')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title" id="modal-mos-title">Adicionar material à OS</div>
+    <input type="hidden" id="mos-os-id">
+    <div id="mos-os-info" style="font-size:12px;color:var(--text2);margin-bottom:10px"></div>
+    <div class="form-row single"><div class="form-group"><label>Buscar material no estoque</label><input type="text" id="mos-search" placeholder="Nome ou código..." oninput="filtrarEstoqueMos()"></div></div>
+    <div class="form-row single"><div class="form-group"><label>Material *</label><select id="mos-material" onchange="atualizarMosPreco()"></select></div></div>
+    <div class="form-row"><div class="form-group"><label>Quantidade *</label><input type="number" id="mos-qtd" min="1" step="1" value="1"></div><div class="form-group"><label>Preço unitário (R$)</label><input type="number" id="mos-preco" step="0.01" min="0" readonly style="background:var(--surface2)"></div></div>
+    <div class="form-row single"><div class="form-group"><label>Observação</label><textarea id="mos-obs" placeholder="Opcional..."></textarea></div></div>
+    <div class="modal-actions"><button class="btn-secondary" onclick="fecharModalId('modal-mos-add')">Cancelar</button><button class="btn-primary" onclick="confirmarMosAdd()">Adicionar</button></div>
+  </div>
+</div>
+
+<!-- MODAL CONFIGURAR PLANEJAMENTO -->
+<div id="modal-plan-config" class="modal-bg" onclick="fecharModal(event,'modal-plan-config')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title">Configurar metas semanais</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">Defina a meta padrão de entregas para cada dia da semana.</div>
+    <div class="form-row triple">
+      <div class="form-group"><label>Segunda</label><input type="number" id="plan-seg" min="0" value="3"></div>
+      <div class="form-group"><label>Terça</label><input type="number" id="plan-ter" min="0" value="3"></div>
+      <div class="form-group"><label>Quarta</label><input type="number" id="plan-qua" min="0" value="3"></div>
+    </div>
+    <div class="form-row triple">
+      <div class="form-group"><label>Quinta</label><input type="number" id="plan-qui" min="0" value="3"></div>
+      <div class="form-group"><label>Sexta</label><input type="number" id="plan-sex" min="0" value="3"></div>
+      <div class="form-group"><label>Sábado</label><input type="number" id="plan-sab" min="0" value="2"></div>
+    </div>
+    <div class="form-row"><div class="form-group"><label>Domingo</label><input type="number" id="plan-dom" min="0" value="0"></div></div>
+    <div class="form-row">
+      <div class="form-group"><label><input type="checkbox" id="plan-incluir-sab"> Incluir sábado na semana</label></div>
+      <div class="form-group"><label><input type="checkbox" id="plan-incluir-dom"> Incluir domingo na semana</label></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="restaurarPlanPadrao()">Restaurar padrão</button>
+      <button class="btn-secondary" onclick="fecharModalId('modal-plan-config')">Cancelar</button>
+      <button class="btn-primary" onclick="salvarPlanConfig()">Salvar</button>
+    </div>
   </div>
 </div>
 
@@ -2005,7 +2179,11 @@ function entrarApp(){
 
 function _onRealtime(tabela,evento,registro){
   _sincronizarEstado();
-  if(tabela==='veiculos'){atualizarKanban();atualizarVeiculos();atualizarDashboard();}
+  if(tabela==='veiculos'){
+    atualizarKanban();atualizarVeiculos();atualizarDashboard();
+    if(document.getElementById('panel-mecanicos')?.classList.contains('active')) renderMecanicosBoard();
+    if(document.getElementById('panel-materiais-os')?.classList.contains('active')) renderMateriaisOs();
+  }
   if(tabela==='agenda'){renderAgendaSemana();atualizarAgendaLista();}
   if(tabela==='estoque'){atualizarEstoque();atualizarBadges();}
   if(tabela==='estoque_movimentacoes'){
@@ -2014,6 +2192,9 @@ function _onRealtime(tabela,evento,registro){
   }
   if(tabela==='fila')atualizarFilaEspera();
   if(tabela==='notas'){}
+  if(tabela==='materiais_os'){
+    if(document.getElementById('panel-materiais-os')?.classList.contains('active')) renderMateriaisOs();
+  }
 }
 
 /* ============ NAVEGAÇÃO ============ */
@@ -2034,7 +2215,16 @@ function showPanel(id,btn){
   if(id==='relatorios-adv'){popularMesesSelect('rel-adv-mes');atualizarRelatoriosAdv();}
   if(id==='config'){atualizarConfig();carregarConvites();}
   if(id==='auditoria')atualizarAuditoria();
+  if(id==='mecanicos')renderMecanicosBoard();
+  if(id==='materiais-os')renderMateriaisOs();
+  if(id==='planejamento')renderPlanejamento();
+  if(id==='fincontrol'){
+    if(!hasRole('dono','socio')){toast('Acesso restrito ao FinControl.','error');showPanel('dashboard',document.querySelector('[data-panel=dashboard]'));return;}
+    abrirFincontrol();
+  }
 }
+
+function hasRole(...roles){ return roles.includes(session?.role); }
 
 /* ============ RELÓGIO ============ */
 function iniciarRelogio(){
@@ -3211,38 +3401,305 @@ function atualizarEstoque(){
 function atualizarColabs(){
   const el=document.getElementById('colab-tabela');
   if(!colabs.length){el.innerHTML='<div class="empty">Nenhum colaborador cadastrado</div>';return;}
-  el.innerHTML=`<table class="table"><thead><tr><th>Nome</th><th>Cargo</th><th>Salário</th><th>Comissão</th><th>Pagamento</th><th>Status</th><th></th></tr></thead>
-    <tbody>${colabs.map(c=>`<tr>
-      <td style="font-weight:500;">${esc(c.nome)}</td><td>${esc(c.cargo)}</td>
+  el.innerHTML=`<table class="table"><thead><tr><th>Nome</th><th>Cargo</th><th>Salário</th><th>Comissão</th><th>Tempo empresa</th><th>Docs</th><th>Status</th><th></th></tr></thead>
+    <tbody>${colabs.map(c=>{
+      const docsCor=corDocsColab(c);
+      const tempoEmp=fmtTempoEmpresa(c.data_admissao);
+      const aniv=aniversariaHoje(c.data_nascimento)?' 🎂':aniversariaProxima7d(c.data_nascimento)?' 🎂':'';
+      return `<tr>
+      <td style="font-weight:500;">${esc(c.nome)}${aniv}</td><td>${esc(c.cargo)}</td>
       <td class="mono">${fmtBRL(c.salario||0)}</td>
       <td class="mono">${c.comissao?c.comissao+'%':'-'}</td>
-      <td style="font-size:12px;">${esc(c.pgto||'-')}</td>
+      <td style="font-size:12px;color:var(--text2)">${tempoEmp}</td>
+      <td><span class="docs-badge ${docsCor.cls}" title="${docsCor.tip}"></span></td>
       <td><span class="badge ${c.status==='ativo'?'colaborador':'fechado'}">${esc(c.status)}</span></td>
       <td style="text-align:right;white-space:nowrap;"><button class="btn-edit" onclick="editColab('${c.id}')">Editar</button><button class="btn-danger" onclick="delColab('${c.id}')">Excluir</button></td>
-    </tr>`).join('')}</tbody></table>`;
+    </tr>`;}).join('')}</tbody></table>`;
 }
+
+const DOCS_COLAB = [
+  { key:'rg_cnh',      label:'RG / CNH' },
+  { key:'comprovante', label:'Comprovante de residência' },
+  { key:'foto3x4',     label:'Foto 3x4' },
+  { key:'certidao',    label:'Certidão (nascimento ou casamento)' },
+  { key:'ctps',        label:'Carteira de Trabalho' },
+];
+
+function corDocsColab(c){
+  const st=c.docs_status||{};
+  const total=DOCS_COLAB.length;
+  const recebidos=DOCS_COLAB.filter(d=>st[d.key]==='recebido').length;
+  if(recebidos===total) return {cls:'verde', tip:'Todos os documentos recebidos'};
+  if(recebidos>0) return {cls:'amarelo', tip:`${recebidos}/${total} documentos recebidos`};
+  return {cls:'cinza', tip:'Nenhum documento recebido'};
+}
+
+function fmtTempoEmpresa(dataAdm){
+  if(!dataAdm) return '—';
+  const a=new Date(dataAdm), b=new Date();
+  if(isNaN(a)) return '—';
+  let anos=b.getFullYear()-a.getFullYear();
+  let meses=b.getMonth()-a.getMonth();
+  if(b.getDate()<a.getDate()) meses--;
+  if(meses<0){anos--;meses+=12;}
+  if(anos<=0 && meses<=0) return 'menos de 1 mês';
+  if(anos===0) return meses+' '+(meses===1?'mês':'meses');
+  if(meses===0) return anos+' '+(anos===1?'ano':'anos');
+  return `${anos} ${anos===1?'ano':'anos'} e ${meses} ${meses===1?'mês':'meses'}`;
+}
+
+function aniversariaHoje(dataNasc){
+  if(!dataNasc) return false;
+  const d=new Date(dataNasc), h=new Date();
+  return d.getMonth()===h.getMonth() && d.getDate()===h.getDate();
+}
+function aniversariaProxima7d(dataNasc){
+  if(!dataNasc) return false;
+  const d=new Date(dataNasc), h=new Date();
+  if(isNaN(d)) return false;
+  const this_year=new Date(h.getFullYear(), d.getMonth(), d.getDate());
+  const diff=(this_year-h)/86400000;
+  return diff>=0 && diff<=7;
+}
+
+function setColabTab(tab,btn){
+  document.querySelectorAll('#modal-colab .tab-btn').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  document.querySelectorAll('#modal-colab .tab-pane').forEach(p=>p.classList.remove('active'));
+  const pane=document.querySelector(`#modal-colab .tab-pane[data-pane="${tab}"]`);
+  if(pane) pane.classList.add('active');
+}
+
+function aplicarColabAbasRole(){
+  // Esconde abas Pessoal e Bancário se usuário não for dono/sócio
+  const podeSensivel = hasRole('dono','socio');
+  document.querySelectorAll('#modal-colab .tab-btn[data-role-tab]').forEach(b=>{
+    b.style.display = podeSensivel ? '' : 'none';
+  });
+  // Se aba ativa está oculta, mover pra Contato
+  const activeBtn=document.querySelector('#modal-colab .tab-btn.active');
+  if(activeBtn && activeBtn.style.display==='none'){
+    const fallback=document.querySelector('#modal-colab .tab-btn[data-tab="contato"]');
+    if(fallback) setColabTab('contato', fallback);
+  }
+}
+
+function maskCPF(input){
+  let v=input.value.replace(/\D/g,'').slice(0,11);
+  v=v.replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d{1,2})$/,'$1-$2');
+  input.value=v;
+}
+
+function validarCPF(cpf){
+  const n=(cpf||'').replace(/\D/g,'');
+  if(n.length!==11||/^(\d)\1+$/.test(n)) return false;
+  let s=0;for(let i=0;i<9;i++)s+=parseInt(n[i])*(10-i);
+  let r=(s*10)%11;if(r>=10)r=0;
+  if(r!==parseInt(n[9]))return false;
+  s=0;for(let i=0;i<10;i++)s+=parseInt(n[i])*(11-i);
+  r=(s*10)%11;if(r>=10)r=0;
+  return r===parseInt(n[10]);
+}
+
+function atualizarIdadeColab(){
+  const v=document.getElementById('colab-nasc').value;
+  const el=document.getElementById('colab-idade');
+  if(!v||!el){if(el)el.textContent='';return;}
+  const d=new Date(v); if(isNaN(d)){el.textContent='';return;}
+  const hoje=new Date();
+  let idade=hoje.getFullYear()-d.getFullYear();
+  const mDiff=hoje.getMonth()-d.getMonth();
+  if(mDiff<0||(mDiff===0&&hoje.getDate()<d.getDate())) idade--;
+  el.textContent= idade>=0 ? `Idade: ${idade} anos` : '';
+}
+
+function toggleColabDesligamento(){
+  const ativo = document.getElementById('colab-status').value==='ativo';
+  document.getElementById('colab-desl-grp').style.display    = ativo?'none':'';
+  document.getElementById('colab-motivo-grp').style.display  = ativo?'none':'';
+}
+
+async function buscarCEPColab(){
+  const cep=(document.getElementById('colab-cep').value||'').replace(/\D/g,'');
+  if(cep.length!==8){toast('CEP inválido','error');return;}
+  try{
+    const r=await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+    const d=await r.json();
+    if(d.erro){toast('CEP não encontrado — preencha manualmente','error');return;}
+    document.getElementById('colab-logradouro').value=d.logradouro||'';
+    document.getElementById('colab-bairro').value=d.bairro||'';
+    document.getElementById('colab-cidade').value=d.localidade||'';
+    document.getElementById('colab-estado-uf').value=d.uf||'';
+    toast('Endereço preenchido','success');
+  }catch(e){toast('Erro ao buscar CEP','error');}
+}
+
+function renderDocsColab(st){
+  st = st || {};
+  const el=document.getElementById('colab-docs-list');
+  if(!el) return;
+  const opts=['pendente','recebido','vencido'];
+  el.innerHTML = DOCS_COLAB.map(d=>{
+    const cur = st[d.key] || 'pendente';
+    return `<div class="doc-row">
+      <div class="doc-label">${d.label}</div>
+      ${opts.map(o=>`<button type="button" class="doc-pill ${cur===o?'active '+o:''}" onclick="setDocColab('${d.key}','${o}',this)">${o.charAt(0).toUpperCase()+o.slice(1)}</button>`).join('')}
+    </div>`;
+  }).join('');
+}
+
+let _colabDocsTmp = {};
+function setDocColab(key, valor, btn){
+  _colabDocsTmp[key] = valor;
+  const row = btn.parentElement;
+  row.querySelectorAll('.doc-pill').forEach(b=>{
+    b.classList.remove('active','pendente','recebido','vencido');
+  });
+  btn.classList.add('active', valor);
+}
+
+function _idsColabCampos(){
+  return ['colab-nome','colab-cpf','colab-rg','colab-rg-orgao','colab-rg-uf','colab-nasc','colab-naturalidade','colab-nacionalidade','colab-estado-civil','colab-nome-mae','colab-nome-pai','colab-tel','colab-tel-fixo','colab-email-pessoal','colab-email-corp','colab-cep','colab-logradouro','colab-numero-end','colab-complemento','colab-bairro','colab-cidade','colab-estado-uf','colab-banco-sel','colab-tipo-conta','colab-agencia','colab-conta-bancaria','colab-pix-tipo','colab-banco','colab-cargo','colab-data-admissao','colab-ctps','colab-ctps-serie','colab-ctps-uf','colab-pis-pasep','colab-pgto','colab-salario','colab-comissao','colab-status','colab-data-desligamento','colab-motivo-desligamento'];
+}
+
 function abrirModalColab(){
-  document.getElementById('modal-colab-title').textContent='Novo colaborador';document.getElementById('colab-id').value='';
-  ['colab-nome','colab-cpf','colab-tel','colab-salario','colab-banco','colab-comissao'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  document.getElementById('colab-cargo').value='Funileiro';document.getElementById('colab-pgto').value='PIX';document.getElementById('colab-status').value='ativo';
+  document.getElementById('modal-colab-title').textContent='Novo colaborador';
+  document.getElementById('colab-id').value='';
+  _idsColabCampos().forEach(id=>{const e=document.getElementById(id);if(e){if(e.tagName==='SELECT'&&e.options.length)e.selectedIndex=0;else e.value='';}});
+  document.getElementById('colab-cargo').value='Funileiro';
+  document.getElementById('colab-pgto').value='PIX';
+  document.getElementById('colab-status').value='ativo';
+  document.getElementById('colab-nacionalidade').value='Brasileiro';
+  document.getElementById('colab-idade').textContent='';
+  _colabDocsTmp = {};
+  renderDocsColab({});
+  toggleColabDesligamento();
+  aplicarColabAbasRole();
+  setColabTab(hasRole('dono','socio')?'pessoal':'contato', document.querySelector(`#modal-colab .tab-btn[data-tab="${hasRole('dono','socio')?'pessoal':'contato'}"]`));
   document.getElementById('modal-colab').classList.add('show');
 }
+
 function editColab(id){
   const c=colabs.find(x=>x.id===id);if(!c)return;
-  document.getElementById('modal-colab-title').textContent='Editar colaborador';document.getElementById('colab-id').value=c.id;
-  document.getElementById('colab-nome').value=c.nome||'';document.getElementById('colab-cpf').value=c.cpf||'';
-  document.getElementById('colab-tel').value=c.tel||'';document.getElementById('colab-cargo').value=c.cargo||'Funileiro';
-  document.getElementById('colab-salario').value=c.salario||'';document.getElementById('colab-comissao').value=c.comissao||'';
-  document.getElementById('colab-pgto').value=c.pgto||'PIX';document.getElementById('colab-banco').value=c.banco||'';document.getElementById('colab-status').value=c.status||'ativo';
+  document.getElementById('modal-colab-title').textContent='Editar colaborador';
+  document.getElementById('colab-id').value=c.id;
+  // Pessoal
+  document.getElementById('colab-nome').value=c.nome||'';
+  document.getElementById('colab-cpf').value=c.cpf||'';
+  document.getElementById('colab-rg').value=c.rg||'';
+  document.getElementById('colab-rg-orgao').value=c.rg_orgao||'';
+  document.getElementById('colab-rg-uf').value=c.rg_uf||'';
+  document.getElementById('colab-nasc').value=c.data_nascimento||'';
+  document.getElementById('colab-naturalidade').value=c.naturalidade||'';
+  document.getElementById('colab-nacionalidade').value=c.nacionalidade||'Brasileiro';
+  document.getElementById('colab-estado-civil').value=c.estado_civil||'';
+  document.getElementById('colab-nome-mae').value=c.nome_mae||'';
+  document.getElementById('colab-nome-pai').value=c.nome_pai||'';
+  // Contato
+  document.getElementById('colab-tel').value=c.tel||'';
+  document.getElementById('colab-tel-fixo').value=c.telefone_fixo||'';
+  document.getElementById('colab-email-pessoal').value=c.email_pessoal||'';
+  document.getElementById('colab-email-corp').value=c.email_corp||'';
+  // Endereço
+  document.getElementById('colab-cep').value=c.cep||'';
+  document.getElementById('colab-logradouro').value=c.logradouro||'';
+  document.getElementById('colab-numero-end').value=c.numero_end||'';
+  document.getElementById('colab-complemento').value=c.complemento||'';
+  document.getElementById('colab-bairro').value=c.bairro||'';
+  document.getElementById('colab-cidade').value=c.cidade||'';
+  document.getElementById('colab-estado-uf').value=c.estado_uf||'';
+  // Bancário
+  document.getElementById('colab-banco-sel').value=c.banco||'';
+  document.getElementById('colab-tipo-conta').value=c.tipo_conta||'';
+  document.getElementById('colab-agencia').value=c.agencia||'';
+  document.getElementById('colab-conta-bancaria').value=c.conta_bancaria||'';
+  document.getElementById('colab-pix-tipo').value=c.pix_tipo||'';
+  document.getElementById('colab-banco').value=c.banco||''; // chave PIX (campo legado mantém valor)
+  // Profissional
+  document.getElementById('colab-cargo').value=c.cargo||'Funileiro';
+  document.getElementById('colab-data-admissao').value=c.data_admissao||'';
+  document.getElementById('colab-ctps').value=c.ctps||'';
+  document.getElementById('colab-ctps-serie').value=c.ctps_serie||'';
+  document.getElementById('colab-ctps-uf').value=c.ctps_uf||'';
+  document.getElementById('colab-pis-pasep').value=c.pis_pasep||'';
+  document.getElementById('colab-pgto').value=c.pgto||'PIX';
+  document.getElementById('colab-salario').value=c.salario||'';
+  document.getElementById('colab-comissao').value=c.comissao||'';
+  document.getElementById('colab-status').value=c.status||'ativo';
+  document.getElementById('colab-data-desligamento').value=c.data_desligamento||'';
+  document.getElementById('colab-motivo-desligamento').value=c.motivo_desligamento||'';
+  toggleColabDesligamento();
+  // Documentos
+  _colabDocsTmp = Object.assign({}, c.docs_status||{});
+  renderDocsColab(_colabDocsTmp);
+  atualizarIdadeColab();
+  aplicarColabAbasRole();
+  setColabTab(hasRole('dono','socio')?'pessoal':'contato', document.querySelector(`#modal-colab .tab-btn[data-tab="${hasRole('dono','socio')?'pessoal':'contato'}"]`));
   document.getElementById('modal-colab').classList.add('show');
 }
+
 async function salvarColab(){
   const id=document.getElementById('colab-id').value;
   const nome=document.getElementById('colab-nome').value.trim();
   const salario=parseFloat(document.getElementById('colab-salario').value);
-  if(!nome){toast('Informe o nome','error');return;}if(!salario||salario<0){toast('Informe o salário','error');return;}
-  const dados={nome,cpf:document.getElementById('colab-cpf').value.trim(),tel:document.getElementById('colab-tel').value.trim(),cargo:document.getElementById('colab-cargo').value,salario,comissao:parseFloat(document.getElementById('colab-comissao').value)||0,pgto:document.getElementById('colab-pgto').value,banco:document.getElementById('colab-banco').value.trim(),status:document.getElementById('colab-status').value};
-  const btn=document.querySelector('#modal-colab .btn-primary');
+  if(!nome){toast('Informe o nome','error');return;}
+  if(!salario||salario<0){toast('Informe o salário','error');return;}
+
+  const cpf=document.getElementById('colab-cpf').value.trim();
+  const cpfLimpo=cpf.replace(/\D/g,'');
+  if(cpfLimpo){
+    if(!validarCPF(cpfLimpo)){toast('CPF inválido','error');return;}
+    const dup=colabs.find(c=>c.cpf && c.cpf.replace(/\D/g,'')===cpfLimpo && c.id!==id);
+    if(dup){toast('CPF já cadastrado para outro colaborador','error');return;}
+  }
+
+  const dataNasc=document.getElementById('colab-nasc').value;
+  if(dataNasc && new Date(dataNasc)>new Date()){toast('Data de nascimento não pode ser no futuro','error');return;}
+
+  const status=document.getElementById('colab-status').value;
+  const dados={
+    nome, cpf,
+    rg:document.getElementById('colab-rg').value.trim()||null,
+    rg_orgao:document.getElementById('colab-rg-orgao').value.trim()||null,
+    rg_uf:document.getElementById('colab-rg-uf').value.trim().toUpperCase()||null,
+    data_nascimento:dataNasc||null,
+    naturalidade:document.getElementById('colab-naturalidade').value.trim()||null,
+    nacionalidade:document.getElementById('colab-nacionalidade').value.trim()||'Brasileiro',
+    estado_civil:document.getElementById('colab-estado-civil').value||null,
+    nome_mae:document.getElementById('colab-nome-mae').value.trim()||null,
+    nome_pai:document.getElementById('colab-nome-pai').value.trim()||null,
+    tel:document.getElementById('colab-tel').value.trim(),
+    telefone_fixo:document.getElementById('colab-tel-fixo').value.trim()||null,
+    email_pessoal:document.getElementById('colab-email-pessoal').value.trim()||null,
+    email_corp:document.getElementById('colab-email-corp').value.trim()||null,
+    cep:document.getElementById('colab-cep').value.trim()||null,
+    logradouro:document.getElementById('colab-logradouro').value.trim()||null,
+    numero_end:document.getElementById('colab-numero-end').value.trim()||null,
+    complemento:document.getElementById('colab-complemento').value.trim()||null,
+    bairro:document.getElementById('colab-bairro').value.trim()||null,
+    cidade:document.getElementById('colab-cidade').value.trim()||null,
+    estado_uf:document.getElementById('colab-estado-uf').value.trim().toUpperCase()||null,
+    banco:document.getElementById('colab-banco-sel').value||document.getElementById('colab-banco').value.trim()||null,
+    tipo_conta:document.getElementById('colab-tipo-conta').value||null,
+    agencia:document.getElementById('colab-agencia').value.trim()||null,
+    conta_bancaria:document.getElementById('colab-conta-bancaria').value.trim()||null,
+    pix_tipo:document.getElementById('colab-pix-tipo').value||null,
+    cargo:document.getElementById('colab-cargo').value,
+    data_admissao:document.getElementById('colab-data-admissao').value||null,
+    ctps:document.getElementById('colab-ctps').value.trim()||null,
+    ctps_serie:document.getElementById('colab-ctps-serie').value.trim()||null,
+    ctps_uf:document.getElementById('colab-ctps-uf').value.trim().toUpperCase()||null,
+    pis_pasep:document.getElementById('colab-pis-pasep').value.trim()||null,
+    pgto:document.getElementById('colab-pgto').value,
+    salario,
+    comissao:parseFloat(document.getElementById('colab-comissao').value)||0,
+    status,
+    data_desligamento: status==='inativo' ? (document.getElementById('colab-data-desligamento').value||null) : null,
+    motivo_desligamento: status==='inativo' ? (document.getElementById('colab-motivo-desligamento').value.trim()||null) : null,
+    docs_status: _colabDocsTmp || {},
+  };
+
+  const btn=document.querySelector('#modal-colab .modal-actions .btn-primary');
   await withLock('salvar-colab-'+(id||'novo'), async()=>{
     await safeOp('Erro ao salvar colaborador', async()=>{
       if(id){
@@ -4855,6 +5312,8 @@ function executarCancelOS(tipo){
     });
   } else if(tipo === 'cancelar'){
     if(!confirm(`Cancelar OS de ${v.placa}? O registro permanecerá no histórico como cancelado.`)) return;
+    // Devolver materiais retirados ao estoque
+    devolverMateriaisOsAoEstoque(id).catch(e=>console.warn(e));
     v.cancelado = true;
     v.canceladoEm = new Date().toISOString();
     v.canceladoMotivo = motivo;
@@ -5189,6 +5648,627 @@ async function rodarValidador(){
     el.innerHTML = `<div class="empty" style="color:var(--red);">Erro ao rodar auditoria: ${esc(e.friendlyMessage||e.message)}</div>`;
   }
 }
+
+/* =========================================================
+   ======== MELHORIAS 2026-05 — Mecânicos / Materiais ========
+   ======== / Planejamento / FinControl Pro              ====
+   ========================================================= */
+
+/* ---------- TASK 2 — KANBAN DOS MECÂNICOS ---------- */
+let _mecDragId = null;
+
+function renderMecanicosBoard(){
+  const board=document.getElementById('mecanicos-board');
+  if(!board) return;
+  const mecanicos=(colabs||[]).filter(c=>{
+    const cg=(c.cargo||'').toLowerCase();
+    return c.status==='ativo' && (cg==='mecânico' || cg==='mecanico');
+  });
+  const warn=document.getElementById('mecanicos-empty-warn');
+  if(!mecanicos.length){
+    if(warn) warn.style.display='block';
+    board.innerHTML='';
+    return;
+  }
+  if(warn) warn.style.display='none';
+
+  const osAtivas=(veiculos||[]).filter(v=>!v.saida && (v.kanbanStatus||'aguardando')!=='entregue' && (v.kanbanStatus||'aguardando')!=='cancelado');
+  const grupos={}; mecanicos.forEach(m=>grupos[m.id]=[]);
+  grupos.__sem__=[];
+  for(const os of osAtivas){
+    const mec = mecanicos.find(m=>m.id===os.mecanicoId);
+    if(mec) grupos[mec.id].push(os); else grupos.__sem__.push(os);
+  }
+
+  const colunas=[...mecanicos.map(m=>({key:m.id,label:m.nome})), {key:'__sem__',label:'⚠️ Sem responsável'}];
+  board.innerHTML=colunas.map(col=>{
+    const lista=grupos[col.key]||[];
+    const corQtd=lista.length===0?'var(--text3)':lista.length<=2?'var(--green-dark)':lista.length===3?'var(--orange)':'var(--red-dark)';
+    return `<div class="kanban-col" style="flex:0 0 260px;min-height:300px"
+      ondragover="event.preventDefault();this.classList.add('drag-target')"
+      ondragleave="this.classList.remove('drag-target')"
+      ondrop="onMecDrop(event,'${col.key}',this)">
+      <div class="kanban-col-header">
+        <span style="color:${corQtd}">${esc(col.label)}</span>
+        <span class="kanban-col-count" style="background:${corQtd};color:#fff">${lista.length}</span>
+      </div>
+      ${lista.length===0
+        ? '<div class="empty" style="padding:1rem;font-size:12px">Livre</div>'
+        : lista.map(_mecCardHTML).join('')}
+    </div>`;
+  }).join('');
+}
+
+function _mecCardHTML(os){
+  const agora=Date.now();
+  const t0 = os.dataEntrada ? new Date(os.dataEntrada+'T'+(os.horaEntrada||'00:00')).getTime() : (os.entrada_em?new Date(os.entrada_em).getTime():agora);
+  const diffMs=agora-t0; const diffH=Math.floor(diffMs/3600000);
+  const diffMin=Math.floor((diffMs%3600000)/60000);
+  const tempoStr= diffH>=24 ? `${Math.floor(diffH/24)}d ${diffH%24}h` : `${diffH}h ${diffMin}min`;
+  const alerta = diffH>=24 ? '🔴 ' : '';
+  const statusKey=os.kanbanStatus||'aguardando';
+  const corStatus={'aguardando':'var(--text3)','em-andamento':'var(--blue)','aguardando-pecas':'var(--purple)','pronto':'var(--green-dark)'}[statusKey]||'var(--text3)';
+  const statusLabel=kanbanLabel(statusKey);
+  return `<div class="kanban-card" draggable="true"
+      ondragstart="_mecDragId='${os.id}';event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain','${os.id}')"
+      onclick="abrirDetalhes('${os.id}')">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <span class="kanban-card-placa">${esc(os.placa||'—')}</span>
+      <span style="font-size:10px;color:${corStatus};font-weight:600">${esc(statusLabel)}</span>
+    </div>
+    <div class="kanban-card-title">${esc(os.modelo||'—')}</div>
+    <div class="kanban-card-sub">${esc(os.cliente||'')}</div>
+    <div class="kanban-card-sub" style="margin-top:4px;font-size:11px">${alerta}${tempoStr} · ${esc(os.servico||'—')}</div>
+    <div class="kanban-card-actions" onclick="event.stopPropagation()">
+      <select class="kanban-btn" onchange="mecAtualizarStatus('${os.id}',this.value);this.value=''" style="font-size:11px">
+        <option value="">Mover status...</option>
+        <option value="aguardando">Aguardando</option>
+        <option value="em-andamento">Em andamento</option>
+        <option value="aguardando-pecas">Aguardando peças</option>
+        <option value="pronto">Pronto</option>
+      </select>
+    </div>
+  </div>`;
+}
+
+async function onMecDrop(e, colKey, colEl){
+  e.preventDefault();
+  colEl.classList.remove('drag-target');
+  const dragId = _mecDragId || (e.dataTransfer && e.dataTransfer.getData('text/plain'));
+  if(!dragId) return;
+  const novoMecId = colKey==='__sem__' ? null : colKey;
+  try{
+    await handle(db.from('veiculos').update({ responsavel_id: novoMecId }).eq('id', dragId));
+    const os = veiculos.find(v=>v.id===dragId);
+    if(os){ os.mecanicoId=novoMecId; os.responsavel_id=novoMecId; }
+    const mecNome = novoMecId ? (colabs.find(c=>c.id===novoMecId)?.nome || '—') : 'Sem responsável';
+    await sbLogAudit('Kanban Mecânicos', `OS ${os?.placa} → ${mecNome}`);
+    renderMecanicosBoard();
+    toast('OS reatribuída: '+mecNome,'success');
+  }catch(err){ toast('Erro ao reatribuir OS','error'); }
+  _mecDragId=null;
+}
+
+async function mecAtualizarStatus(osId, novoStatus){
+  if(!novoStatus) return;
+  try{
+    await sbMoverKanban(osId, novoStatus);
+    const os=veiculos.find(v=>v.id===osId);
+    if(os){ os.kanbanStatus=novoStatus; os.status=novoStatus; }
+    await sbLogAudit('Status OS', `${osId} → ${novoStatus}`);
+    renderMecanicosBoard();
+    if(typeof atualizarKanban==='function') atualizarKanban();
+    toast('Status: '+kanbanLabel(novoStatus),'success');
+  }catch(err){ toast('Erro ao atualizar status','error'); }
+}
+
+/* ---------- TASK 3 — MATERIAIS POR OS ---------- */
+async function sbSalvarMaterialOs(item){
+  const row={
+    workspace_id: wsId(),
+    veiculo_id: item.veiculoId,
+    estoque_id: item.estoqueId || null,
+    nome: item.nome,
+    quantidade: item.quantidade,
+    preco_unit: item.precoUnit || 0,
+    observacao: item.observacao || '',
+    retirado_por: DB.session?.nome || DB.session?.username || ''
+  };
+  const saved = await handle(db.from('materiais_os').insert(row).select().single());
+  DB.materiaisOs = DB.materiaisOs || [];
+  DB.materiaisOs.push(saved);
+  return saved;
+}
+
+async function sbExcluirMaterialOs(id){
+  await handle(db.from('materiais_os').delete().eq('id', id));
+  DB.materiaisOs = (DB.materiaisOs||[]).filter(m=>m.id!==id);
+}
+
+function renderMateriaisOs(){
+  const buscaEl=document.getElementById('mos-busca');
+  const busca=(buscaEl?.value||'').toLowerCase();
+  const osAtivas=(veiculos||[]).filter(v=>!v.saida && (v.kanbanStatus||'aguardando')!=='entregue' && (v.kanbanStatus||'aguardando')!=='cancelado'
+    && (!busca || [v.placa, v.modelo, v.cliente].some(f=>(f||'').toLowerCase().includes(busca))));
+  const el=document.getElementById('mos-list');
+  if(!el) return;
+  if(!osAtivas.length){ el.innerHTML='<div class="empty">Nenhuma OS ativa encontrada</div>'; return; }
+  el.innerHTML = osAtivas.map(os=>{
+    const mats=(DB.materiaisOs||[]).filter(m=>m.veiculo_id===os.id);
+    const totalMat=mats.reduce((s,m)=>s+(Number(m.total)||0),0);
+    const mecNome=os.mecanicoId ? (colabs.find(c=>c.id===os.mecanicoId)?.nome || 'Sem mecânico') : 'Sem mecânico';
+    return `<div class="card" style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;flex-wrap:wrap;gap:8px"
+        onclick="toggleMosBody('${os.id}')">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <span class="kanban-card-placa">${esc(os.placa)}</span>
+          <strong>${esc(os.modelo||'—')}</strong>
+          <span style="color:var(--text3);font-size:12px">${esc(os.cliente||'')} · ${esc(mecNome)}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap" onclick="event.stopPropagation()">
+          <span style="font-size:13px;color:var(--green-dark);font-weight:600">${mats.length} item(s) · ${fmtBRL(totalMat)}</span>
+          <button class="btn-secondary" style="font-size:12px;padding:6px 12px" onclick="abrirMosAdicionar('${os.id}')">+ Material</button>
+          <button class="btn-secondary" style="font-size:12px;padding:6px 12px" onclick="imprimirFichaMateriais('${os.id}')" title="Imprimir ficha">🖨️</button>
+        </div>
+      </div>
+      <div id="mos-body-${os.id}" style="display:none;margin-top:1rem;border-top:1px solid var(--border);padding-top:1rem">
+        ${mats.length===0
+          ? '<div class="empty" style="padding:.5rem">Nenhum material adicionado</div>'
+          : `<div class="mos-row mos-row-head"><div>Material</div><div style="text-align:center">Qtd</div><div style="text-align:right">Unit</div><div style="text-align:right">Total</div><div></div></div>
+              ${mats.map(m=>`<div class="mos-row">
+                <div>${esc(m.nome)}${m.observacao?`<div style="font-size:11px;color:var(--text3)">${esc(m.observacao)}</div>`:''}</div>
+                <div style="text-align:center">${m.quantidade}</div>
+                <div style="text-align:right;font-family:'DM Mono',monospace">${fmtBRL(Number(m.preco_unit)||0)}</div>
+                <div style="text-align:right;font-family:'DM Mono',monospace;font-weight:600">${fmtBRL(Number(m.total)||0)}</div>
+                <div><button class="btn-danger" onclick="removerMaterialOs('${m.id}','${os.id}',${m.quantidade},'${m.estoque_id||''}')">×</button></div>
+              </div>`).join('')}
+              <div style="display:flex;justify-content:flex-end;gap:1rem;padding-top:10px;font-weight:600">
+                <span style="color:var(--text2)">Total:</span>
+                <span style="font-family:'DM Mono',monospace;color:var(--green-dark)">${fmtBRL(totalMat)}</span>
+              </div>`}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleMosBody(osId){
+  const el=document.getElementById('mos-body-'+osId);
+  if(!el) return;
+  el.style.display = el.style.display==='none' ? 'block' : 'none';
+}
+
+function abrirMosAdicionar(osId){
+  const os=veiculos.find(v=>v.id===osId); if(!os){toast('OS não encontrada','error');return;}
+  document.getElementById('mos-os-id').value=osId;
+  document.getElementById('mos-os-info').innerHTML=`<span class="kanban-card-placa">${esc(os.placa)}</span> ${esc(os.modelo||'')} · ${esc(os.cliente||'')}`;
+  document.getElementById('mos-search').value='';
+  document.getElementById('mos-qtd').value=1;
+  document.getElementById('mos-obs').value='';
+  filtrarEstoqueMos();
+  document.getElementById('modal-mos-add').classList.add('show');
+}
+
+function filtrarEstoqueMos(){
+  const q=(document.getElementById('mos-search').value||'').toLowerCase();
+  const sel=document.getElementById('mos-material');
+  const lista=(estoque||[]).filter(e=>e.qtd>0 && (!q || [e.nome,e.codigo,e.fornecedor].some(f=>(f||'').toLowerCase().includes(q))));
+  sel.innerHTML = lista.length===0 ? '<option value="">Nenhum material disponível</option>' :
+    lista.map(e=>`<option value="${e.id}" data-preco="${e.preco||0}" data-qtd="${e.qtd}" data-nome="${esc(e.nome)}">${esc(e.nome)} — ${e.qtd} disp. — ${fmtBRL(e.preco||0)}</option>`).join('');
+  atualizarMosPreco();
+}
+
+function atualizarMosPreco(){
+  const sel=document.getElementById('mos-material');
+  const opt=sel.options[sel.selectedIndex];
+  if(!opt || !opt.value){ document.getElementById('mos-preco').value=''; return; }
+  document.getElementById('mos-preco').value=parseFloat(opt.dataset.preco||0).toFixed(2);
+  document.getElementById('mos-qtd').max=opt.dataset.qtd;
+}
+
+async function confirmarMosAdd(){
+  const osId=document.getElementById('mos-os-id').value;
+  const sel=document.getElementById('mos-material');
+  const opt=sel.options[sel.selectedIndex];
+  if(!opt||!opt.value){toast('Selecione um material','error');return;}
+  const estoqueId=opt.value;
+  const nome=opt.dataset.nome;
+  const preco=parseFloat(opt.dataset.preco||0);
+  const dispon=parseInt(opt.dataset.qtd||0);
+  const qtd=parseInt(document.getElementById('mos-qtd').value);
+  if(!qtd||qtd<1){toast('Quantidade inválida','error');return;}
+  if(qtd>dispon){toast(`Disponível em estoque: ${dispon}`,'error');return;}
+  const obs=document.getElementById('mos-obs').value.trim();
+  const os=veiculos.find(v=>v.id===osId);
+  const btn=document.querySelector('#modal-mos-add .modal-actions .btn-primary');
+  await safeOp('Erro ao adicionar material', async()=>{
+    await sbSalvarMaterialOs({ veiculoId: osId, estoqueId, nome, quantidade: qtd, precoUnit: preco, observacao: obs });
+    try { await removerEstoque(estoqueId, qtd, `Saída para OS ${os?.placa}`, osId); } catch(e){ console.warn('Falha ao baixar estoque', e); }
+    const it=estoque.find(x=>x.id===estoqueId); if(it) it.qtd = Math.max(0, it.qtd - qtd);
+    await sbLogAudit('Saída material OS', `${nome} x${qtd} → OS ${os?.placa||osId}`);
+    fecharModalId('modal-mos-add');
+    renderMateriaisOs();
+    if(typeof atualizarEstoque==='function') atualizarEstoque();
+    toast('Material adicionado','success');
+  },{btn});
+}
+
+async function removerMaterialOs(matId, osId, quantidade, estoqueId){
+  if(!confirm('Remover material e devolver ao estoque?')) return;
+  try{
+    await sbExcluirMaterialOs(matId);
+    if(estoqueId && isUUID(estoqueId)){
+      try { await adicionarEstoque(estoqueId, Number(quantidade), 'Devolução de material da OS'); } catch(e){}
+      const it=estoque.find(x=>x.id===estoqueId); if(it) it.qtd=(it.qtd||0)+Number(quantidade);
+    }
+    await sbLogAudit('Devolução material estoque', `matId=${matId} qtd=${quantidade}`);
+    renderMateriaisOs();
+    if(typeof atualizarEstoque==='function') atualizarEstoque();
+    toast('Material removido e devolvido ao estoque.','success');
+  }catch(e){ toast('Erro ao remover material','error'); }
+}
+
+async function devolverMateriaisOsAoEstoque(osId){
+  const mats=(DB.materiaisOs||[]).filter(m=>m.veiculo_id===osId);
+  if(!mats.length) return;
+  if(!confirm(`Esta OS tem ${mats.length} material(is) retirados. Devolver ao estoque?`)) return;
+  for(const m of mats){
+    if(m.estoque_id && isUUID(m.estoque_id)){
+      try { await adicionarEstoque(m.estoque_id, Number(m.quantidade), 'Devolução por cancelamento de OS'); } catch(e){}
+      const it=estoque.find(x=>x.id===m.estoque_id); if(it) it.qtd=(it.qtd||0)+Number(m.quantidade);
+    }
+    await sbExcluirMaterialOs(m.id);
+  }
+  await sbLogAudit('Materiais devolvidos por cancelamento', `OS=${osId} itens=${mats.length}`);
+  if(typeof atualizarEstoque==='function') atualizarEstoque();
+}
+
+function imprimirFichaMateriais(osId){
+  const os=veiculos.find(v=>v.id===osId);
+  const mats=(DB.materiaisOs||[]).filter(m=>m.veiculo_id===osId);
+  const total=mats.reduce((s,m)=>s+(Number(m.total)||0),0);
+  const mecNome=os?.mecanicoId ? (colabs.find(c=>c.id===os.mecanicoId)?.nome || '—') : '—';
+  const win=window.open('','_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>Ficha de Materiais — ${esc(os?.placa||'')}</title>
+    <style>body{font-family:monospace;padding:20px;max-width:600px;margin:0 auto}
+    h2{text-align:center;border-bottom:2px solid #000;padding-bottom:8px}
+    .info{margin-bottom:16px;font-size:13px;line-height:1.8}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th,td{border:1px solid #999;padding:6px 10px}
+    th{background:#eee;text-align:left}
+    .total{font-weight:bold;text-align:right}
+    .rodape{margin-top:30px;display:flex;justify-content:space-between}
+    .assinatura{border-top:1px solid #000;width:200px;text-align:center;padding-top:6px;font-size:12px}
+    @media print{button{display:none}}</style></head><body>
+    <h2>${esc(DB.config?.nome||'Oficina')} — Ficha de Materiais</h2>
+    <div class="info">
+      <strong>Placa:</strong> ${esc(os?.placa||'—')} &nbsp;&nbsp;
+      <strong>Modelo:</strong> ${esc(os?.modelo||'—')}<br>
+      <strong>Cliente:</strong> ${esc(os?.cliente||'—')} &nbsp;&nbsp;
+      <strong>Mecânico:</strong> ${esc(mecNome)}<br>
+      <strong>Entrada:</strong> ${esc(os?.dataEntrada||'—')} &nbsp;&nbsp;
+      <strong>Emissão:</strong> ${new Date().toLocaleDateString('pt-BR')}
+    </div>
+    <table>
+      <thead><tr><th>Material</th><th>Qtd</th><th>Unit</th><th>Total</th></tr></thead>
+      <tbody>${mats.map(m=>`<tr>
+        <td>${esc(m.nome)}</td>
+        <td style="text-align:center">${m.quantidade}</td>
+        <td style="text-align:right">${fmtBRL(Number(m.preco_unit)||0)}</td>
+        <td style="text-align:right">${fmtBRL(Number(m.total)||0)}</td>
+      </tr>`).join('')}</tbody>
+      <tfoot><tr>
+        <td colspan="3" class="total">TOTAL MATERIAIS:</td>
+        <td style="text-align:right;font-weight:bold">${fmtBRL(total)}</td>
+      </tr></tfoot>
+    </table>
+    <div class="rodape">
+      <div class="assinatura">Mecânico responsável</div>
+      <div class="assinatura">Gerente / Aprovação</div>
+    </div>
+    <script>window.onload=()=>window.print()<\/script>
+  </body></html>`);
+  win.document.close();
+}
+
+/* ---------- TASK 4 — PLANEJAMENTO DA SEMANA ---------- */
+let planSemanaOffset=0;
+
+function _planDefaults(){
+  return {
+    metaPad: JSON.parse(localStorage.getItem('om_meta_padrao')||'{"seg":3,"ter":3,"qua":3,"qui":3,"sex":3,"sab":2,"dom":0}'),
+    metasDias: JSON.parse(localStorage.getItem('om_metas_dias')||'{}'),
+    cfg: JSON.parse(localStorage.getItem('om_plan_config')||'{"incluirSabado":true,"incluirDomingo":false}')
+  };
+}
+
+function renderPlanejamento(){
+  if(!hasRole('dono','socio','gerente')){ toast('Acesso restrito.','error'); showPanel('dashboard', document.querySelector('[data-panel=dashboard]')); return; }
+  const {cfg,metaPad,metasDias}=_planDefaults();
+  const hoje=new Date();
+  const inicioSemana=new Date(hoje);
+  const dow=hoje.getDay();
+  const diff = dow===0 ? -6 : 1-dow;
+  inicioSemana.setDate(hoje.getDate()+diff+planSemanaOffset*7);
+
+  const diasKeys=['seg','ter','qua','qui','sex','sab','dom'];
+  const diasNomes=['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
+
+  const dias=[];
+  for(let i=0;i<7;i++){
+    if(!cfg.incluirSabado && i===5) continue;
+    if(!cfg.incluirDomingo && i===6) continue;
+    const d=new Date(inicioSemana);
+    d.setDate(inicioSemana.getDate()+i);
+    const iso=d.toISOString().slice(0,10);
+    const meta=metasDias[iso]!==undefined ? metasDias[iso] : (metaPad[diasKeys[i]]??3);
+    const isHoje= d.toDateString()===hoje.toDateString();
+    const isFuturo= d>hoje && !isHoje;
+    const isPast= d<hoje && !isHoje;
+    const entregues=(veiculos||[]).filter(v=>v.saida && v.saida.data===iso);
+    const agendados=(agenda||[]).filter(a=>(a.data||'').slice(0,10)===iso);
+    dias.push({d,iso,meta,isHoje,isFuturo,isPast,entregues,agendados,nome:diasNomes[i],key:diasKeys[i]});
+  }
+
+  const totalEntregues=dias.reduce((s,d)=>s+d.entregues.length,0);
+  const totalMeta=dias.reduce((s,d)=>s+d.meta,0);
+  const pct=totalMeta>0?Math.round(totalEntregues/totalMeta*100):null;
+  const receitaSemana=dias.reduce((s,d)=>s+d.entregues.reduce((ss,v)=>ss+((v.saida?.valor)||0),0),0);
+  const labelSemana=`${dias[0].d.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'})} – ${dias[dias.length-1].d.toLocaleDateString('pt-BR',{day:'2-digit',month:'short',year:'numeric'})}`;
+
+  document.getElementById('panel-planejamento').innerHTML=`
+    <div class="page-header">
+      <div><div class="page-title">Planejamento da Semana</div><div class="page-sub">Metas de entrega por dia</div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn-secondary" onclick="abrirPlanConfig()">⚙️ Configurar metas</button>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:1.5rem;flex-wrap:wrap">
+      <button class="btn-secondary" onclick="planSemanaOffset--;renderPlanejamento()">← Anterior</button>
+      <span style="font-size:14px;font-weight:600;flex:1;text-align:center;min-width:200px">${labelSemana}</span>
+      <button class="btn-secondary" onclick="planSemanaOffset++;renderPlanejamento()">Próxima →</button>
+      ${planSemanaOffset!==0?`<button class="btn-secondary" onclick="planSemanaOffset=0;renderPlanejamento()">Hoje</button>`:''}
+    </div>
+    <div class="plan-grid" style="grid-template-columns:repeat(${dias.length},1fr)">
+      ${dias.map(dia=>{
+        const pctDia=dia.meta>0?Math.min(100,Math.round(dia.entregues.length/dia.meta*100)):null;
+        let cls='plan-day';
+        if(dia.isHoje) cls+=' is-hoje';
+        else if(dia.isPast && pctDia!==null && pctDia<100) cls+=' is-pass-fail';
+        else if(dia.isPast && pctDia===100) cls+=' is-pass-ok';
+        return `<div class="${cls}">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+            <div>
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text3)">${dia.nome}</div>
+              <div style="font-size:20px;font-weight:700;font-family:'DM Mono',monospace;${dia.isHoje?'color:var(--green-dark)':''}">${dia.d.getDate()}</div>
+            </div>
+            <button onclick="editarMetaDia('${dia.iso}',${dia.meta})" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:13px;padding:2px" title="Editar meta">✏️</button>
+          </div>
+          ${dia.meta>0?`
+            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">${dia.entregues.length}/${dia.meta} entregues</div>
+            <div style="height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;margin-bottom:8px">
+              <div style="height:100%;width:${pctDia||0}%;background:${pctDia>=100?'var(--green)':'var(--blue)'};border-radius:3px"></div>
+            </div>`:`<div style="font-size:11px;color:var(--text3);margin-bottom:8px">Sem meta</div>`}
+          ${dia.entregues.slice(0,3).map(v=>`<div style="font-size:11px;padding:2px 0;border-bottom:1px solid var(--border);color:var(--text2)">${esc(v.placa)} ${esc((v.modelo||'').split(' ')[0])}</div>`).join('')}
+          ${dia.entregues.length>3?`<div style="font-size:10px;color:var(--text3);margin-top:3px">+${dia.entregues.length-3} mais</div>`:''}
+          ${dia.isFuturo && dia.agendados.length?`
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;color:var(--text3);margin-top:6px;margin-bottom:3px">Agendados:</div>
+            ${dia.agendados.slice(0,2).map(a=>`<div style="font-size:11px;color:var(--text2)">${esc(a.hora||'')} ${esc(a.placa||a.cliente||'')}</div>`).join('')}
+          `:''}
+        </div>`;
+      }).join('')}
+    </div>
+    <div class="card">
+      <div class="card-title">Resumo da semana</div>
+      <div class="metrics" style="grid-template-columns:repeat(4,1fr)">
+        <div class="metric-card"><div class="metric-label">Entregues</div><div class="metric-value green">${totalEntregues}</div><div class="metric-sub">de ${totalMeta} na meta</div></div>
+        <div class="metric-card"><div class="metric-label">Atingimento</div><div class="metric-value ${pct>=100?'green':pct>=70?'blue':'red'}">${pct!==null?pct+'%':'—'}</div></div>
+        <div class="metric-card"><div class="metric-label">Receita</div><div class="metric-value green">${fmtBRL(receitaSemana)}</div></div>
+        <div class="metric-card"><div class="metric-label">Ticket médio</div><div class="metric-value">${totalEntregues>0?fmtBRL(receitaSemana/totalEntregues):'—'}</div></div>
+      </div>
+    </div>`;
+}
+
+function editarMetaDia(iso, metaAtual){
+  const v=prompt(`Meta de entregas para ${iso}:`, metaAtual);
+  if(v===null) return;
+  const n=parseInt(v);
+  if(isNaN(n)||n<0){ toast('Valor inválido','error'); return; }
+  const metas=JSON.parse(localStorage.getItem('om_metas_dias')||'{}');
+  metas[iso]=n;
+  localStorage.setItem('om_metas_dias', JSON.stringify(metas));
+  renderPlanejamento();
+  toast('Meta atualizada','success');
+}
+
+function abrirPlanConfig(){
+  const {metaPad,cfg}=_planDefaults();
+  document.getElementById('plan-seg').value=metaPad.seg??3;
+  document.getElementById('plan-ter').value=metaPad.ter??3;
+  document.getElementById('plan-qua').value=metaPad.qua??3;
+  document.getElementById('plan-qui').value=metaPad.qui??3;
+  document.getElementById('plan-sex').value=metaPad.sex??3;
+  document.getElementById('plan-sab').value=metaPad.sab??2;
+  document.getElementById('plan-dom').value=metaPad.dom??0;
+  document.getElementById('plan-incluir-sab').checked=!!cfg.incluirSabado;
+  document.getElementById('plan-incluir-dom').checked=!!cfg.incluirDomingo;
+  document.getElementById('modal-plan-config').classList.add('show');
+}
+
+function salvarPlanConfig(){
+  const metaPad={
+    seg:parseInt(document.getElementById('plan-seg').value)||0,
+    ter:parseInt(document.getElementById('plan-ter').value)||0,
+    qua:parseInt(document.getElementById('plan-qua').value)||0,
+    qui:parseInt(document.getElementById('plan-qui').value)||0,
+    sex:parseInt(document.getElementById('plan-sex').value)||0,
+    sab:parseInt(document.getElementById('plan-sab').value)||0,
+    dom:parseInt(document.getElementById('plan-dom').value)||0
+  };
+  const cfg={
+    incluirSabado: document.getElementById('plan-incluir-sab').checked,
+    incluirDomingo: document.getElementById('plan-incluir-dom').checked
+  };
+  localStorage.setItem('om_meta_padrao', JSON.stringify(metaPad));
+  localStorage.setItem('om_plan_config', JSON.stringify(cfg));
+  fecharModalId('modal-plan-config');
+  renderPlanejamento();
+  toast('Configuração salva','success');
+}
+
+function restaurarPlanPadrao(){
+  if(!confirm('Restaurar metas padrão?')) return;
+  localStorage.removeItem('om_meta_padrao');
+  localStorage.removeItem('om_plan_config');
+  abrirPlanConfig();
+  toast('Padrão restaurado','success');
+}
+
+/* ---------- TASK 1 — INTEGRAÇÃO FINCONTROL PRO ---------- */
+const FC_LANC_KEY = 'fc_lancamentos';
+const FC_IFRAME_SRC = 'fincontrol-v3.html';
+
+function fcLancar(tipo, desc, valor, cat){
+  try{
+    const lista=JSON.parse(localStorage.getItem(FC_LANC_KEY)||'[]');
+    lista.push({
+      id: (crypto.randomUUID ? crypto.randomUUID() : 'fc-'+Date.now()+Math.random().toString(36).slice(2,8)),
+      tipo, desc, valor: Number(valor)||0, cat,
+      data: new Date().toISOString().slice(0,10),
+      forma: 'PIX',
+      criado: new Date().toISOString(),
+      origem: 'oficina_manager'
+    });
+    localStorage.setItem(FC_LANC_KEY, JSON.stringify(lista));
+  }catch(e){ console.warn('[fcLancar] falha', e); }
+}
+
+function fcGetResumo(){
+  try{
+    const lista=JSON.parse(localStorage.getItem(FC_LANC_KEY)||'[]');
+    const mes=new Date().toISOString().slice(0,7);
+    const doMes=lista.filter(l=>(l.data||'').startsWith(mes));
+    const entradas=doMes.filter(l=>l.tipo==='entrada').reduce((s,l)=>s+(Number(l.valor)||0),0);
+    const saidas  =doMes.filter(l=>l.tipo==='saida'  ).reduce((s,l)=>s+(Number(l.valor)||0),0);
+    return { entradas, saidas, saldo: entradas-saidas, count: lista.length };
+  }catch(e){ return { entradas:0, saidas:0, saldo:0, count:0 }; }
+}
+
+function fcAtualizarCardDashboard(){
+  const el=document.getElementById('fc-status'); if(!el) return;
+  if(!hasRole('dono','socio')){
+    el.innerHTML = `<span style="color:var(--green-dark);">● Conectado ao Supabase</span> — ${DB.lancamentos.length} lançamento(s).`;
+    return;
+  }
+  const r=fcGetResumo();
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Resumo FinControl Pro (mês atual)</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:2px">${r.count} lançamento(s) no localStorage</div>
+      </div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap">
+        <div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Entradas</div><div style="font-family:'DM Mono',monospace;font-weight:600;color:var(--green-dark)">${fmtBRL(r.entradas)}</div></div>
+        <div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Saídas</div><div style="font-family:'DM Mono',monospace;font-weight:600;color:var(--red-dark)">${fmtBRL(r.saidas)}</div></div>
+        <div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Saldo</div><div style="font-family:'DM Mono',monospace;font-weight:700;color:${r.saldo>=0?'var(--green-dark)':'var(--red-dark)'}">${fmtBRL(r.saldo)}</div></div>
+        <button class="btn-secondary" onclick="showPanel('fincontrol', document.querySelector('[data-panel=fincontrol]'))">Abrir →</button>
+      </div>
+    </div>`;
+}
+
+let _fcIframeLoaded=false;
+function abrirFincontrol(){
+  const ifr=document.getElementById('fc-iframe');
+  if(!ifr) return;
+  if(!_fcIframeLoaded){
+    ifr.src = FC_IFRAME_SRC;
+    _fcIframeLoaded=true;
+  }
+  const banner=document.getElementById('fc-banner');
+  if(banner){
+    try{
+      const lista=JSON.parse(localStorage.getItem(FC_LANC_KEY)||'[]');
+      if(lista.length){
+        banner.style.display='';
+        banner.textContent=`Dados existentes do FinControl detectados (${lista.length} lançamento(s)) — mantidos intactos.`;
+      } else { banner.style.display='none'; }
+    }catch(e){ banner.style.display='none'; }
+  }
+}
+function fcRecarregarIframe(){
+  const ifr=document.getElementById('fc-iframe');
+  if(ifr){ ifr.src = FC_IFRAME_SRC + '?t=' + Date.now(); }
+}
+function fcAbrirNovaAba(){ window.open(FC_IFRAME_SRC, '_blank'); }
+
+/* Hooks de integração: monkey-patch para lançar no FinControl
+   (mantém comportamento original intacto e injeta fcLancar no fluxo) */
+(function _instalarFcHooks(){
+  // Saída de veículo → entrada FinControl
+  if(typeof confirmarSaida === 'function' && !confirmarSaida.__fcHooked){
+    const orig = confirmarSaida;
+    confirmarSaida = function(){
+      const id=document.getElementById('saida-id').value;
+      const v=veiculos.find(x=>x.id===id);
+      const valor=parseFloat(document.getElementById('saida-valor').value)||0;
+      const r = orig.apply(this, arguments);
+      try{
+        if(v && valor>0) fcLancar('entrada', `Serviço: ${v.modelo||''} (${v.placa||''})`, valor, 'Serviços de Oficina');
+        fcAtualizarCardDashboard();
+      }catch(e){}
+      return r;
+    };
+    confirmarSaida.__fcHooked = true;
+  }
+  // Pagamento de salário → saída FinControl
+  if(typeof confirmarPagamento === 'function' && !confirmarPagamento.__fcHooked){
+    const orig = confirmarPagamento;
+    confirmarPagamento = function(){
+      const colabId=document.getElementById('pagar-colab-id').value;
+      const c=colabs.find(x=>x.id===colabId);
+      const r = orig.apply(this, arguments);
+      try{
+        if(c) fcLancar('saida', `Salário: ${c.nome}`, parseFloat(c.salario)||0, 'Folha de Pagamento');
+        fcAtualizarCardDashboard();
+      }catch(e){}
+      return r;
+    };
+    confirmarPagamento.__fcHooked = true;
+  }
+  // Compra de material → saída FinControl
+  if(typeof salvarEstoque === 'function' && !salvarEstoque.__fcHooked){
+    const orig = salvarEstoque;
+    salvarEstoque = async function(){
+      const id=document.getElementById('est-id').value;
+      const isNew = !id;
+      const nome=(document.getElementById('est-nome').value||'').trim();
+      const qtd =parseInt(document.getElementById('est-qtd').value)||0;
+      const preco=parseFloat(document.getElementById('est-preco').value)||0;
+      const r = await orig.apply(this, arguments);
+      try{
+        if(isNew && qtd>0 && preco>0){
+          fcLancar('saida', `Compra: ${nome} (x${qtd})`, qtd*preco, 'Compras/Estoque');
+          fcAtualizarCardDashboard();
+        }
+      }catch(e){}
+      return r;
+    };
+    salvarEstoque.__fcHooked = true;
+  }
+})();
+
+/* Patch do dashboard para atualizar card FinControl (não substitui original) */
+(function _patchDashFc(){
+  if(typeof atualizarDashboard==='function' && !atualizarDashboard.__fcPatched){
+    const orig = atualizarDashboard;
+    atualizarDashboard = function(){
+      const r = orig.apply(this, arguments);
+      try { fcAtualizarCardDashboard(); } catch(e){}
+      return r;
+    };
+    atualizarDashboard.__fcPatched = true;
+  }
+})();
 
 /* ============ MODAIS ============ */
 function fecharModal(e, id) { if (e.target.id===id) fecharModalId(id); }
