@@ -2784,8 +2784,30 @@ async function abrirEditarVeiculo(id){
 async function salvarEdicaoVeiculo(btn){
   const ok=await verificarPermissaoEdicao();
   if(!ok){ toast('Acesso negado: apenas admin ou sócio podem editar veículos','error'); return; }
-  const id=document.getElementById('ev-id').value;
+  let id=document.getElementById('ev-id').value;
   if(!id){ toast('ID do veículo ausente','error'); return; }
+  // Se o ID local é temporário (tmp_xxx), tentar resolver para o UUID real
+  // — pode acontecer quando o usuário edita logo após criar e o sync ainda não atualizou o objeto local.
+  if(String(id).startsWith('tmp_')){
+    const placaAtual=(document.getElementById('ev-placa').value||'').trim().toUpperCase();
+    let real=(DB.veiculos||[]).find(v=>!String(v.id).startsWith('tmp_') && (v.placa||'').toUpperCase()===placaAtual);
+    if(!real && placaAtual){
+      try{
+        const rows=await handle(db.from('veiculos').select('id').eq('workspace_id', wsId()).eq('placa', placaAtual).order('entrada_em',{ascending:false}).limit(1));
+        if(rows && rows.length) real={id: rows[0].id};
+      }catch(e){}
+    }
+    if(real && real.id){
+      // Atualiza cache local pra refletir o UUID real
+      const i=veiculos.findIndex(x=>x.id===id);
+      if(i>=0) veiculos[i].id=real.id;
+      id=real.id;
+      document.getElementById('ev-id').value=real.id;
+    } else {
+      toast('Aguarde alguns segundos — o veículo ainda está sendo salvo no servidor. Tente novamente.','error');
+      return;
+    }
+  }
 
   const placa=(document.getElementById('ev-placa').value||'').trim().toUpperCase();
   const modelo=(document.getElementById('ev-modelo').value||'').trim();
