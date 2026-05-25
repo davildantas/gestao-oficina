@@ -637,6 +637,36 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .retorno-item:last-child{border-bottom:none}
 
 .badge.socio{background:var(--purple-bg);color:var(--purple)}
+/* ===== PLANEJAMENTO SEMANAL ===== */
+.plan-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-bottom:16px}
+.plan-day{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--radius);padding:12px;display:flex;flex-direction:column;gap:5px;min-height:230px;transition:border-color .15s}
+.plan-day.today{border-color:var(--green);border-width:2px}
+.plan-day.weekend{background:var(--surface2)}
+.plan-day-label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px}
+.plan-day-num{font-size:22px;font-weight:800;line-height:1.1;color:var(--text);margin-bottom:2px}
+.plan-day-num.today-num{color:var(--green-dark)}
+.plan-load{height:5px;border-radius:3px;background:var(--border);margin:3px 0 5px}
+.plan-load-fill{height:100%;border-radius:3px;transition:width .4s}
+.plan-cap-label{font-size:10px;color:var(--text3);margin-bottom:3px}
+.plan-ag-chip{background:var(--green-bg);color:var(--green-dark);border-left:2.5px solid var(--green);border-radius:3px;padding:3px 7px;font-size:11px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4}
+.plan-ag-chip:hover{opacity:.75}
+.plan-ag-chip.urgente{background:var(--red-bg,#fee2e2);color:#dc2626;border-color:#ef4444}
+.plan-nota{width:100%;border:1px dashed var(--border2);border-radius:6px;padding:6px 7px;font-size:11px;resize:none;height:56px;background:transparent;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:auto;transition:all .15s}
+.plan-nota:focus{outline:none;border-style:solid;border-color:var(--green);background:var(--surface2)}
+.plan-nota::placeholder{color:var(--text3)}
+.plan-tarefa{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+.plan-tarefa:last-child{border-bottom:none}
+.plan-tarefa input[type=checkbox]{width:16px;height:16px;accent-color:var(--green);cursor:pointer;flex-shrink:0;margin-top:2px}
+.plan-tarefa-body{flex:1;min-width:0}
+.plan-tarefa-txt{font-size:13px;color:var(--text);line-height:1.4}
+.plan-tarefa-txt.done{text-decoration:line-through;color:var(--text3)}
+.plan-tarefa-meta{font-size:11px;color:var(--text3);margin-top:2px}
+.plan-pri-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle;flex-shrink:0}
+.plan-empty-task{color:var(--text3);font-size:13px;text-align:center;padding:20px}
+.plan-meta-bar{height:6px;border-radius:3px;background:var(--border);margin:6px 0 2px;overflow:hidden}
+.plan-meta-bar-fill{height:100%;border-radius:3px;background:var(--green);transition:width .4s}
+@media(max-width:900px){.plan-grid{grid-template-columns:repeat(4,1fr)}}
+@media(max-width:600px){.plan-grid{grid-template-columns:1fr 1fr}}
 .badge.assistente{background:var(--blue-bg);color:var(--blue)}
 .badge.cancelado{background:var(--surface2);color:var(--text3)}
 .badge.seguradora{background:var(--purple-bg);color:var(--purple)}
@@ -702,6 +732,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
       <button class="nav-item" data-panel="kanban" data-role="dono,socio,gerente" onclick="showPanel('kanban',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 5h3v13H4zm7 0h3v7h-3zm7 0h3v4h-3z"/></svg>Kanban OS</button>
       <button class="nav-item" data-panel="veiculos" data-role="dono,socio,gerente" onclick="showPanel('veiculos',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg>Veículos</button>
       <button class="nav-item" data-panel="agenda" data-role="dono,socio,gerente" onclick="showPanel('agenda',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg>Agenda</button>
+      <button class="nav-item" data-panel="planejamento" data-role="dono,socio,gerente" onclick="showPanel('planejamento',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1s-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>Planejamento</button>
       <button class="nav-item" data-panel="clientes" data-role="dono,socio,gerente" onclick="showPanel('clientes',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>CRM Clientes<span class="nav-badge" id="badge-clientes" style="display:none;"></span></button>
       <div class="nav-section" data-role="dono,socio,gerente,assistente">Gestão</div>
       <button class="nav-item" data-panel="estoque" data-role="dono,socio,gerente,assistente" onclick="showPanel('estoque',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-2.18c.07-.44.18-.86.18-1.3C18 2.12 15.88 0 13.3 0c-1.31 0-2.4.52-3.19 1.38L12 3.4l1.9-2.02C14.33 1.14 14.8 1 13.3 1c-.8 0-1.5.37-2 .96l-2.5 2.66L6.5 2.13C5.79 1.41 4.9 1 3.92 1 1.73 1 0 2.73 0 4.92c0 .44.11.86.18 1.3H0v14h20V6z"/></svg>Estoque<span class="nav-badge" id="badge-estoque" style="display:none;"></span></button>
@@ -790,6 +821,58 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
       </div>
       <div class="agenda-week" id="agenda-week"></div>
       <div class="card"><div class="card-title">Todos os agendamentos</div><div id="agenda-lista"></div></div>
+    </div>
+
+    <!-- PLANEJAMENTO SEMANAL -->
+    <div id="panel-planejamento" class="panel">
+      <div class="page-header">
+        <div><div class="page-title">Planejamento Semanal</div><div class="page-sub">Organize sua semana — agendamentos, metas e tarefas</div></div>
+        <button class="btn-primary" onclick="abrirModalPlanTarefa()">+ Nova tarefa</button>
+      </div>
+      <div class="agenda-nav">
+        <button class="btn-secondary" onclick="navPlan(-1)">← Semana anterior</button>
+        <div class="agenda-nav-label" id="plan-label">—</div>
+        <button class="btn-secondary" onclick="navPlan(1)">Próxima semana →</button>
+        <button class="btn-sm" onclick="planSemOffset=0;renderPlanejamento()">Hoje</button>
+      </div>
+      <div class="metrics" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
+        <div class="metric-card">
+          <div class="metric-label">Meta de faturamento</div>
+          <div class="metric-value green" id="plan-meta-fat-val">—</div>
+          <div class="plan-meta-bar"><div class="plan-meta-bar-fill" id="plan-meta-fat-bar" style="width:0%"></div></div>
+          <div id="plan-meta-fat-prog" class="metric-sub">Não definido</div>
+          <button class="btn-sm" style="margin-top:6px" onclick="editarMetaPlan('fat')">Editar meta</button>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Meta de OS / agendamentos</div>
+          <div class="metric-value blue" id="plan-meta-os-val">—</div>
+          <div class="plan-meta-bar"><div class="plan-meta-bar-fill" id="plan-meta-os-bar" style="width:0%;background:var(--blue,#3b82f6)"></div></div>
+          <div id="plan-meta-os-prog" class="metric-sub">Não definido</div>
+          <button class="btn-sm" style="margin-top:6px" onclick="editarMetaPlan('os')">Editar meta</button>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Agendamentos na semana</div>
+          <div class="metric-value orange" id="plan-total-ags">0</div>
+          <div class="metric-sub" id="plan-cap-sub">confirmados</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Tarefas concluídas</div>
+          <div class="metric-value" id="plan-tasks-prog">0/0</div>
+          <div class="metric-sub">desta semana</div>
+        </div>
+      </div>
+      <div class="plan-grid" id="plan-grid"></div>
+      <div class="card">
+        <div class="card-title">Tarefas da semana
+          <div class="actions" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <button class="filter-btn active" id="ptf-todas" onclick="setPlanFiltro('todas',this)">Todas</button>
+            <button class="filter-btn" id="ptf-pendentes" onclick="setPlanFiltro('pendentes',this)">Pendentes</button>
+            <button class="filter-btn" id="ptf-concluidas" onclick="setPlanFiltro('concluidas',this)">Concluídas</button>
+            <button class="btn-sm" onclick="abrirModalPlanTarefa()">+ Adicionar</button>
+          </div>
+        </div>
+        <div id="plan-tarefas-lista"></div>
+      </div>
     </div>
 
     <!-- CLIENTES -->
@@ -1254,6 +1337,46 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
     <div class="modal-title" id="hist-cli-titulo">Histórico do cliente</div>
     <div id="hist-cli-conteudo"></div>
     <div class="modal-actions"><button class="btn-secondary" onclick="fecharModalId('modal-hist-cliente')">Fechar</button></div>
+  </div>
+</div>
+
+<!-- PLANEJAMENTO: TAREFA -->
+<div id="modal-plan-tarefa" class="modal-bg" onclick="fecharModal(event,'modal-plan-tarefa')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:440px">
+    <div class="modal-title" id="modal-plan-tarefa-title">Nova tarefa da semana</div>
+    <input type="hidden" id="pt-id">
+    <div class="form-group"><label>Descrição *</label><input type="text" id="pt-texto" placeholder="O que precisa ser feito?" maxlength="200"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Prioridade</label>
+        <select id="pt-pri" style="height:38px;width:100%;padding:0 10px;border:1px solid var(--border2);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none">
+          <option value="normal">Normal</option>
+          <option value="alta">Alta</option>
+          <option value="urgente">Urgente</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Categoria</label>
+        <select id="pt-cat" style="height:38px;width:100%;padding:0 10px;border:1px solid var(--border2);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none">
+          <option value="operacional">⚙️ Operacional</option>
+          <option value="financeiro">💰 Financeiro</option>
+          <option value="cliente">👤 Cliente</option>
+          <option value="estoque">📦 Estoque</option>
+          <option value="equipe">👷 Equipe</option>
+          <option value="outro">📌 Outro</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group"><label>Observação</label><textarea id="pt-obs" rows="2" placeholder="Detalhes opcionais..."></textarea></div>
+    <div class="modal-footer"><button class="btn-secondary" onclick="fecharModalId('modal-plan-tarefa')">Cancelar</button><button class="btn-primary" onclick="salvarPlanTarefa()">Salvar tarefa</button></div>
+  </div>
+</div>
+
+<!-- PLANEJAMENTO: META -->
+<div id="modal-plan-meta" class="modal-bg" onclick="fecharModal(event,'modal-plan-meta')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:360px">
+    <div class="modal-title" id="modal-plan-meta-title">Meta da semana</div>
+    <input type="hidden" id="pm-tipo">
+    <div class="form-group"><label id="pm-label">Valor</label><input type="number" id="pm-valor" min="0" step="100" placeholder="0"></div>
+    <div class="modal-footer"><button class="btn-secondary" onclick="fecharModalId('modal-plan-meta')">Cancelar</button><button class="btn-primary" onclick="salvarMetaPlan()">Salvar</button></div>
   </div>
 </div>
 
@@ -1758,6 +1881,7 @@ function showPanel(id,btn){
   if(id==='kanban')atualizarKanban();
   if(id==='veiculos')atualizarVeiculos();
   if(id==='agenda'){renderAgendaSemana();atualizarAgendaLista();}
+  if(id==='planejamento')renderPlanejamento();
   if(id==='clientes')atualizarClientes();
   if(id==='estoque')atualizarEstoque();
   if(id==='colaboradores')atualizarColabs();
@@ -2383,6 +2507,197 @@ function converterAgOS(id){
   document.getElementById('v-cliente').value=a.cliente||'';document.getElementById('v-telefone').value=a.tel||'';
   document.getElementById('v-servico').value=a.servico||'';document.getElementById('v-cliente-box').style.display='none';
   document.getElementById('modal-entrada').classList.add('show');
+}
+
+/* ============ PLANEJAMENTO SEMANAL ============ */
+let planSemOffset=0;
+let planNotas=JSON.parse(localStorage.getItem('planNotas')||'{}');
+let planTarefas=JSON.parse(localStorage.getItem('planTarefas')||'[]');
+let planMetas=JSON.parse(localStorage.getItem('planMetas')||'{}');
+let planFiltroTarefas='todas';
+
+function savePlanNotas(){localStorage.setItem('planNotas',JSON.stringify(planNotas));}
+function savePlanTarefas(){localStorage.setItem('planTarefas',JSON.stringify(planTarefas));}
+function savePlanMetas(){localStorage.setItem('planMetas',JSON.stringify(planMetas));}
+
+function getPlanSemKey(){
+  const d=getSemanaInicio(planSemOffset);
+  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+}
+
+function navPlan(dir){planSemOffset+=dir;renderPlanejamento();}
+
+function renderPlanejamento(){
+  const inicio=getSemanaInicio(planSemOffset);
+  const dias=Array.from({length:7},(_,i)=>{const d=new Date(inicio);d.setDate(d.getDate()+i);return d;});
+  const li=dias[0].toLocaleDateString('pt-BR',{day:'numeric',month:'short'});
+  const lf=dias[6].toLocaleDateString('pt-BR',{day:'numeric',month:'short',year:'numeric'});
+  document.getElementById('plan-label').textContent=li+' – '+lf;
+
+  const hoje=hojeISO();
+  const semKey=getPlanSemKey();
+  const metas=planMetas[semKey]||{};
+  const nomes=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const capDia=Math.max(1,Math.ceil((config.capacidade||20)/6));
+
+  const isosDias=dias.map(d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()));
+  const agsNaSemana=agenda.filter(a=>isosDias.includes(a.data));
+  document.getElementById('plan-total-ags').textContent=agsNaSemana.length;
+  document.getElementById('plan-cap-sub').textContent=`de ${capDia*6} vagas disponíveis`;
+
+  // Meta faturamento
+  const metaFat=metas.fat||0;
+  const fatReal=veiculos.filter(v=>v.saida&&isosDias.some(iso=>v.saida.startsWith(iso))).reduce((s,v)=>s+parseFloat(v.orcamento||0),0);
+  const fatPct=metaFat?Math.min(100,Math.round(fatReal/metaFat*100)):0;
+  document.getElementById('plan-meta-fat-val').textContent=metaFat?fmtBRL(metaFat):'Não definido';
+  document.getElementById('plan-meta-fat-bar').style.width=fatPct+'%';
+  document.getElementById('plan-meta-fat-bar').style.background=fatPct>=100?'var(--green)':fatPct>=60?'#f59e0b':'#ef4444';
+  document.getElementById('plan-meta-fat-prog').textContent=metaFat?`${fatPct}% • ${fmtBRL(fatReal)} realizado`:(fatReal?fmtBRL(fatReal)+' realizado':'—');
+
+  // Meta OS
+  const metaOS=metas.os||0;
+  const osPct=metaOS?Math.min(100,Math.round(agsNaSemana.length/metaOS*100)):0;
+  document.getElementById('plan-meta-os-val').textContent=metaOS?metaOS+' OS':'Não definido';
+  document.getElementById('plan-meta-os-bar').style.width=osPct+'%';
+  document.getElementById('plan-meta-os-bar').style.background=osPct>=100?'var(--green)':osPct>=60?'#f59e0b':'#ef4444';
+  document.getElementById('plan-meta-os-prog').textContent=metaOS?`${osPct}% • ${agsNaSemana.length} agendados`:(agsNaSemana.length?agsNaSemana.length+' agendados':'—');
+
+  // Tarefas
+  const tarefasSem=planTarefas.filter(t=>t.semKey===semKey);
+  const concluidas=tarefasSem.filter(t=>t.feito).length;
+  document.getElementById('plan-tasks-prog').textContent=`${concluidas}/${tarefasSem.length}`;
+
+  // Grade semanal
+  document.getElementById('plan-grid').innerHTML=dias.map(d=>{
+    const iso=d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+    const agsDia=agenda.filter(a=>a.data===iso).sort((a,b)=>a.hora.localeCompare(b.hora));
+    const load=Math.min(1,agsDia.length/capDia);
+    const loadColor=load===0?'var(--green)':load<0.6?'var(--green)':load<0.9?'#f59e0b':'#ef4444';
+    const nota=planNotas[iso]||'';
+    const isHoje=iso===hoje;
+    const isWeekend=d.getDay()===0||d.getDay()===6;
+    const livres=Math.max(0,capDia-agsDia.length);
+    return`<div class="plan-day${isHoje?' today':''}${isWeekend?' weekend':''}">
+      <div class="plan-day-label">${nomes[d.getDay()]}</div>
+      <div class="plan-day-num${isHoje?' today-num':''}">${pad(d.getDate())}</div>
+      <div class="plan-load"><div class="plan-load-fill" style="width:${Math.round(load*100)}%;background:${loadColor}"></div></div>
+      <div class="plan-cap-label">${agsDia.length} agend. · ${livres} livre${livres!==1?'s':''}</div>
+      ${agsDia.map(a=>`<div class="plan-ag-chip" onclick="showPanel('agenda',document.querySelector('[data-panel=agenda]'));setTimeout(()=>editAgendamento(${JSON.stringify(a.id)}),150)" title="${esc(a.cliente)} — ${esc(a.servico||'')}">
+        <strong>${a.hora}</strong> ${esc(a.cliente.split(' ')[0])}${a.servico?' · '+esc(a.servico.substring(0,14)):''}
+      </div>`).join('')}
+      ${!agsDia.length?`<div style="font-size:10px;color:var(--text3);text-align:center;padding:6px 0">Dia livre</div>`:''}
+      <textarea class="plan-nota" placeholder="Notas do dia..." data-iso="${iso}" onblur="salvarNotaDia(this)">${nota.replace(/</g,'&lt;')}</textarea>
+    </div>`;
+  }).join('');
+
+  renderPlanTarefas();
+}
+
+function salvarNotaDia(el){
+  const iso=el.getAttribute('data-iso');
+  const val=el.value.trim();
+  if(val)planNotas[iso]=val;else delete planNotas[iso];
+  savePlanNotas();
+}
+
+function renderPlanTarefas(){
+  const semKey=getPlanSemKey();
+  let tarefas=planTarefas.filter(t=>t.semKey===semKey);
+  if(planFiltroTarefas==='pendentes')tarefas=tarefas.filter(t=>!t.feito);
+  if(planFiltroTarefas==='concluidas')tarefas=tarefas.filter(t=>t.feito);
+  const priColors={alta:'#f59e0b',urgente:'#ef4444',normal:'var(--green)'};
+  const catLabels={operacional:'⚙️ Operacional',financeiro:'💰 Financeiro',cliente:'👤 Cliente',estoque:'📦 Estoque',equipe:'👷 Equipe',outro:'📌 Outro'};
+  const priOrder={urgente:0,alta:1,normal:2};
+  tarefas.sort((a,b)=>a.feito!==b.feito?a.feito?1:-1:(priOrder[a.pri]||2)-(priOrder[b.pri]||2));
+  const el=document.getElementById('plan-tarefas-lista');
+  if(!tarefas.length){el.innerHTML=`<div class="plan-empty-task">Nenhuma tarefa ${planFiltroTarefas==='todas'?'cadastrada':planFiltroTarefas} para esta semana<br><span style="font-size:11px">Use "+ Adicionar" para criar tarefas e lembretes</span></div>`;return;}
+  el.innerHTML=tarefas.map(t=>`<div class="plan-tarefa">
+    <input type="checkbox" ${t.feito?'checked':''} onchange="togglePlanTarefa('${t.id}',this.checked)">
+    <div class="plan-tarefa-body">
+      <div class="plan-tarefa-txt${t.feito?' done':''}">
+        <span class="plan-pri-dot" style="background:${priColors[t.pri]||priColors.normal}"></span>${esc(t.texto)}
+      </div>
+      <div class="plan-tarefa-meta">${catLabels[t.cat]||''}${t.obs?' · '+esc(t.obs):''}${t.feito&&t.feitoEm?' · Concluído '+fmtData(t.feitoEm):''}</div>
+    </div>
+    <div style="display:flex;gap:4px;flex-shrink:0">
+      <button class="btn-edit" onclick="editarPlanTarefa('${t.id}')">Editar</button>
+      <button class="btn-danger" onclick="delPlanTarefa('${t.id}')">Excluir</button>
+    </div>
+  </div>`).join('');
+}
+
+function setPlanFiltro(f,btn){
+  planFiltroTarefas=f;
+  ['ptf-todas','ptf-pendentes','ptf-concluidas'].forEach(id=>{const e=document.getElementById(id);if(e)e.classList.remove('active');});
+  btn.classList.add('active');
+  renderPlanTarefas();
+}
+
+function abrirModalPlanTarefa(){
+  document.getElementById('pt-id').value='';
+  ['pt-texto','pt-obs'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  document.getElementById('pt-pri').value='normal';
+  document.getElementById('pt-cat').value='operacional';
+  document.getElementById('modal-plan-tarefa-title').textContent='Nova tarefa da semana';
+  document.getElementById('modal-plan-tarefa').classList.add('show');
+}
+
+function editarPlanTarefa(id){
+  const t=planTarefas.find(x=>x.id===id);if(!t)return;
+  document.getElementById('pt-id').value=t.id;
+  document.getElementById('pt-texto').value=t.texto||'';
+  document.getElementById('pt-pri').value=t.pri||'normal';
+  document.getElementById('pt-cat').value=t.cat||'operacional';
+  document.getElementById('pt-obs').value=t.obs||'';
+  document.getElementById('modal-plan-tarefa-title').textContent='Editar tarefa';
+  document.getElementById('modal-plan-tarefa').classList.add('show');
+}
+
+function salvarPlanTarefa(){
+  const id=document.getElementById('pt-id').value;
+  const texto=document.getElementById('pt-texto').value.trim();
+  if(!texto){toast('Informe a descrição','error');return;}
+  const semKey=getPlanSemKey();
+  const dados={texto,pri:document.getElementById('pt-pri').value,cat:document.getElementById('pt-cat').value,obs:document.getElementById('pt-obs').value.trim(),semKey};
+  if(id){
+    const i=planTarefas.findIndex(x=>x.id===id);
+    if(i>=0)planTarefas[i]={...planTarefas[i],...dados};
+  } else {
+    planTarefas.push({id:'pt_'+Date.now(),...dados,feito:false,feitoEm:null});
+  }
+  savePlanTarefas();fecharModalId('modal-plan-tarefa');renderPlanejamento();toast('Tarefa salva','success');
+}
+
+function togglePlanTarefa(id,feito){
+  const t=planTarefas.find(x=>x.id===id);if(!t)return;
+  t.feito=feito;t.feitoEm=feito?hojeISO():null;
+  savePlanTarefas();renderPlanejamento();
+}
+
+function delPlanTarefa(id){
+  if(!confirm('Excluir tarefa?'))return;
+  planTarefas=planTarefas.filter(t=>t.id!==id);
+  savePlanTarefas();renderPlanejamento();toast('Tarefa excluída');
+}
+
+function editarMetaPlan(tipo){
+  const semKey=getPlanSemKey();
+  const metas=planMetas[semKey]||{};
+  document.getElementById('pm-tipo').value=tipo;
+  document.getElementById('modal-plan-meta-title').textContent=tipo==='fat'?'Meta de faturamento da semana':'Meta de OS / agendamentos';
+  document.getElementById('pm-label').textContent=tipo==='fat'?'Meta (R$)':'Número de OS alvo';
+  document.getElementById('pm-valor').value=metas[tipo]||'';
+  document.getElementById('pm-valor').step=tipo==='fat'?'100':'1';
+  document.getElementById('modal-plan-meta').classList.add('show');
+}
+
+function salvarMetaPlan(){
+  const tipo=document.getElementById('pm-tipo').value;
+  const val=parseFloat(document.getElementById('pm-valor').value)||0;
+  const semKey=getPlanSemKey();
+  if(!planMetas[semKey])planMetas[semKey]={};
+  planMetas[semKey][tipo]=val;
+  savePlanMetas();fecharModalId('modal-plan-meta');renderPlanejamento();toast('Meta salva','success');
 }
 
 /* ============ CRM CLIENTES ============ */
@@ -3097,6 +3412,7 @@ const TOUR_STEPS=[
   {sel:'[data-panel="veiculos"]',title:'Controle de Veículos',text:'Registre entradas e saídas de veículos. O horário é automático. Após entrada, preencha a ficha de vistoria.'},
   {sel:'[data-panel="kanban"]',title:'Kanban de OS',text:'Arraste os cards entre as colunas. Ao chegar em "Pronto", um botão WhatsApp aparece para avisar o cliente.'},
   {sel:'[data-panel="agenda"]',title:'Agenda',text:'Gerencie agendamentos em visão semanal. Use "→ OS" para converter um agendamento em ordem de serviço com um clique.'},
+  {sel:'[data-panel="planejamento"]',title:'Planejamento Semanal',text:'Visão completa da semana: grade de dias com agendamentos, metas de faturamento e OS com barra de progresso, tarefas/lembretes semanais e notas por dia. Navegue entre semanas com as setas.'},
   {sel:'[data-panel="estoque"]',title:'Estoque de Peças',text:'Cadastre peças, defina estoque mínimo e receba alertas. Compras são lançadas automaticamente no FinControl.'},
   {sel:'[data-panel="fluxo-caixa"]',title:'Fluxo de Caixa',text:'Acompanhe entradas, saídas e saldo do mês. Defina metas de faturamento e monitore o progresso aqui.'},
   {sel:'[data-panel="comunicacao"]',title:'Comunicação',text:'Envie orçamentos e pesquisas de satisfação por WhatsApp, veja aniversariantes e contate clientes inativos.'},
