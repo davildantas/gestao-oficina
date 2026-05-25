@@ -642,6 +642,22 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .plan-day.is-hoje{border:2px solid var(--green)}
 .plan-day.is-pass-fail{border-color:var(--red)}
 .plan-day.is-pass-ok{border-color:var(--green)}
+.plan-nota{width:100%;border:1px dashed var(--border2);border-radius:6px;padding:6px 7px;font-size:11px;resize:none;height:52px;background:transparent;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:8px;transition:all .15s;box-sizing:border-box}
+.plan-nota:focus{outline:none;border-style:solid;border-color:var(--green);background:var(--surface2)}
+.plan-nota::placeholder{color:var(--text3)}
+.plan-ag-pill{background:var(--green-bg);color:var(--green-dark);border-left:2.5px solid var(--green);border-radius:3px;padding:3px 6px;font-size:11px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:3px}
+.plan-ag-pill:hover{opacity:.75}
+.plan-tarefa-row{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+.plan-tarefa-row:last-child{border-bottom:none}
+.plan-tarefa-row input[type=checkbox]{width:16px;height:16px;accent-color:var(--green);cursor:pointer;flex-shrink:0;margin-top:2px}
+.plan-tarefa-body{flex:1;min-width:0}
+.plan-tarefa-txt{font-size:13px;color:var(--text);line-height:1.4}
+.plan-tarefa-txt.done{text-decoration:line-through;color:var(--text3)}
+.plan-tarefa-meta{font-size:11px;color:var(--text3);margin-top:2px}
+.plan-pri-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle}
+.plan-meta-bar{height:6px;border-radius:3px;background:var(--border);margin:6px 0 3px;overflow:hidden}
+.plan-meta-bar-fill{height:100%;border-radius:3px;transition:width .4s}
+.plan-empty-task{color:var(--text3);font-size:13px;text-align:center;padding:24px}
 /* ===== FinControl iframe ===== */
 .fc-iframe-wrap{width:100%;height:calc(100vh - 110px);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;background:var(--surface)}
 .fc-iframe-wrap iframe{width:100%;height:100%;border:0;display:block}
@@ -1594,6 +1610,45 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 </div>
 
 <!-- MODAL CONFIGURAR PLANEJAMENTO -->
+<!-- PLANEJAMENTO: TAREFA -->
+<div id="modal-plan-tarefa" class="modal-bg" onclick="fecharModal(event,'modal-plan-tarefa')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:440px">
+    <div class="modal-title" id="modal-plan-tarefa-title">Nova tarefa da semana</div>
+    <input type="hidden" id="pt-id">
+    <div class="form-group"><label>Descrição *</label><input type="text" id="pt-texto" placeholder="O que precisa ser feito?" maxlength="200"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Prioridade</label>
+        <select id="pt-pri" style="height:38px;width:100%;padding:0 10px;border:1px solid var(--border2);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none">
+          <option value="normal">Normal</option>
+          <option value="alta">Alta</option>
+          <option value="urgente">Urgente</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Categoria</label>
+        <select id="pt-cat" style="height:38px;width:100%;padding:0 10px;border:1px solid var(--border2);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none">
+          <option value="operacional">⚙️ Operacional</option>
+          <option value="financeiro">💰 Financeiro</option>
+          <option value="cliente">👤 Cliente</option>
+          <option value="estoque">📦 Estoque</option>
+          <option value="equipe">👷 Equipe</option>
+          <option value="outro">📌 Outro</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group"><label>Observação</label><textarea id="pt-obs" rows="2" placeholder="Detalhes opcionais..."></textarea></div>
+    <div class="modal-actions"><button class="btn-secondary" onclick="fecharModalId('modal-plan-tarefa')">Cancelar</button><button class="btn-primary" onclick="salvarPlanTarefa()">Salvar tarefa</button></div>
+  </div>
+</div>
+
+<!-- PLANEJAMENTO: META FATURAMENTO -->
+<div id="modal-plan-meta-fat" class="modal-bg" onclick="fecharModal(event,'modal-plan-meta-fat')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:360px">
+    <div class="modal-title">Meta de faturamento da semana</div>
+    <div class="form-group"><label>Valor alvo (R$)</label><input type="number" id="pmf-valor" min="0" step="100" placeholder="Ex: 15000"></div>
+    <div class="modal-actions"><button class="btn-secondary" onclick="fecharModalId('modal-plan-meta-fat')">Cancelar</button><button class="btn-primary" onclick="salvarPlanMetaFat()">Salvar</button></div>
+  </div>
+</div>
+
 <div id="modal-plan-config" class="modal-bg" onclick="fecharModal(event,'modal-plan-config')">
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-title">Configurar metas semanais</div>
@@ -5973,6 +6028,106 @@ function imprimirFichaMateriais(osId){
 
 /* ---------- TASK 4 — PLANEJAMENTO DA SEMANA ---------- */
 let planSemanaOffset=0;
+let planNotas=JSON.parse(localStorage.getItem('om_plan_notas')||'{}');
+let planTarefas=JSON.parse(localStorage.getItem('om_plan_tarefas')||'[]');
+let planMetaFat=JSON.parse(localStorage.getItem('om_plan_meta_fat')||'{}');
+let planFiltroTarefas='todas';
+function _savePlanNotas(){localStorage.setItem('om_plan_notas',JSON.stringify(planNotas));}
+function _savePlanTarefas(){localStorage.setItem('om_plan_tarefas',JSON.stringify(planTarefas));}
+function _savePlanMetaFat(){localStorage.setItem('om_plan_meta_fat',JSON.stringify(planMetaFat));}
+function _getPlanSemKey(){
+  const hoje=new Date();
+  const d=new Date(hoje);
+  const dow=hoje.getDay();
+  d.setDate(hoje.getDate()+(dow===0?-6:1-dow)+planSemanaOffset*7);
+  return d.toISOString().slice(0,10);
+}
+function salvarNotaDia(el){
+  const iso=el.getAttribute('data-iso');
+  const val=el.value.trim();
+  if(val)planNotas[iso]=val;else delete planNotas[iso];
+  _savePlanNotas();
+}
+function abrirModalPlanTarefa(){
+  document.getElementById('pt-id').value='';
+  ['pt-texto','pt-obs'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  document.getElementById('pt-pri').value='normal';
+  document.getElementById('pt-cat').value='operacional';
+  document.getElementById('modal-plan-tarefa-title').textContent='Nova tarefa da semana';
+  document.getElementById('modal-plan-tarefa').classList.add('show');
+}
+function editarPlanTarefa(id){
+  const t=planTarefas.find(x=>x.id===id);if(!t)return;
+  document.getElementById('pt-id').value=t.id;
+  document.getElementById('pt-texto').value=t.texto||'';
+  document.getElementById('pt-pri').value=t.pri||'normal';
+  document.getElementById('pt-cat').value=t.cat||'operacional';
+  document.getElementById('pt-obs').value=t.obs||'';
+  document.getElementById('modal-plan-tarefa-title').textContent='Editar tarefa';
+  document.getElementById('modal-plan-tarefa').classList.add('show');
+}
+function salvarPlanTarefa(){
+  const id=document.getElementById('pt-id').value;
+  const texto=document.getElementById('pt-texto').value.trim();
+  if(!texto){toast('Informe a descrição','error');return;}
+  const semKey=_getPlanSemKey();
+  const dados={texto,pri:document.getElementById('pt-pri').value,cat:document.getElementById('pt-cat').value,obs:document.getElementById('pt-obs').value.trim(),semKey};
+  if(id){const i=planTarefas.findIndex(x=>x.id===id);if(i>=0)planTarefas[i]={...planTarefas[i],...dados};}
+  else planTarefas.push({id:'pt_'+Date.now(),...dados,feito:false,feitoEm:null});
+  _savePlanTarefas();fecharModalId('modal-plan-tarefa');renderPlanejamento();toast('Tarefa salva','success');
+}
+function togglePlanTarefa(id,feito){
+  const t=planTarefas.find(x=>x.id===id);if(!t)return;
+  t.feito=feito;t.feitoEm=feito?new Date().toISOString().slice(0,10):null;
+  _savePlanTarefas();_renderPlanTarefasSec();
+}
+function delPlanTarefa(id){
+  if(!confirm('Excluir tarefa?'))return;
+  planTarefas=planTarefas.filter(t=>t.id!==id);
+  _savePlanTarefas();_renderPlanTarefasSec();toast('Tarefa excluída');
+}
+function setPlanFiltroTarefas(f,btn){
+  planFiltroTarefas=f;
+  document.querySelectorAll('.ptf-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  _renderPlanTarefasSec();
+}
+function _renderPlanTarefasSec(){
+  const sec=document.getElementById('plan-tarefas-sec');if(!sec)return;
+  const semKey=_getPlanSemKey();
+  let tarefas=planTarefas.filter(t=>t.semKey===semKey);
+  if(planFiltroTarefas==='pendentes')tarefas=tarefas.filter(t=>!t.feito);
+  if(planFiltroTarefas==='concluidas')tarefas=tarefas.filter(t=>t.feito);
+  const priColors={alta:'#f59e0b',urgente:'#ef4444',normal:'var(--green)'};
+  const catLabels={operacional:'⚙️ Operacional',financeiro:'💰 Financeiro',cliente:'👤 Cliente',estoque:'📦 Estoque',equipe:'👷 Equipe',outro:'📌 Outro'};
+  const priOrder={urgente:0,alta:1,normal:2};
+  tarefas.sort((a,b)=>a.feito!==b.feito?a.feito?1:-1:(priOrder[a.pri]||2)-(priOrder[b.pri]||2));
+  const conc=planTarefas.filter(t=>t.semKey===semKey&&t.feito).length;
+  const tot=planTarefas.filter(t=>t.semKey===semKey).length;
+  const badge=document.getElementById('plan-tasks-badge');if(badge)badge.textContent=`${conc}/${tot}`;
+  if(!tarefas.length){sec.innerHTML=`<div class="plan-empty-task">Nenhuma tarefa ${planFiltroTarefas==='todas'?'cadastrada':planFiltroTarefas} para esta semana<br><span style="font-size:11px">Use "+ Nova tarefa" para criar lembretes</span></div>`;return;}
+  sec.innerHTML=tarefas.map(t=>`<div class="plan-tarefa-row">
+    <input type="checkbox" ${t.feito?'checked':''} onchange="togglePlanTarefa('${t.id}',this.checked)">
+    <div class="plan-tarefa-body">
+      <div class="plan-tarefa-txt${t.feito?' done':''}"><span class="plan-pri-dot" style="background:${priColors[t.pri]||priColors.normal}"></span>${esc(t.texto)}</div>
+      <div class="plan-tarefa-meta">${catLabels[t.cat]||''}${t.obs?' · '+esc(t.obs):''}${t.feito&&t.feitoEm?' · Concluído '+t.feitoEm:''}</div>
+    </div>
+    <div style="display:flex;gap:4px;flex-shrink:0">
+      <button class="btn-edit" onclick="editarPlanTarefa('${t.id}')">Editar</button>
+      <button class="btn-danger" onclick="delPlanTarefa('${t.id}')">Excluir</button>
+    </div>
+  </div>`).join('');
+}
+function abrirPlanMetaFat(){
+  const semKey=_getPlanSemKey();
+  document.getElementById('pmf-valor').value=planMetaFat[semKey]||'';
+  document.getElementById('modal-plan-meta-fat').classList.add('show');
+}
+function salvarPlanMetaFat(){
+  const val=parseFloat(document.getElementById('pmf-valor').value)||0;
+  planMetaFat[_getPlanSemKey()]=val;
+  _savePlanMetaFat();fecharModalId('modal-plan-meta-fat');renderPlanejamento();toast('Meta salva','success');
+}
 
 function _planDefaults(){
   return {
@@ -6015,20 +6170,54 @@ function renderPlanejamento(){
   const pct=totalMeta>0?Math.round(totalEntregues/totalMeta*100):null;
   const receitaSemana=dias.reduce((s,d)=>s+d.entregues.reduce((ss,v)=>ss+((v.saida?.valor)||0),0),0);
   const labelSemana=`${dias[0].d.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'})} – ${dias[dias.length-1].d.toLocaleDateString('pt-BR',{day:'2-digit',month:'short',year:'numeric'})}`;
+  const semKey=_getPlanSemKey();
+  const metaFatVal=planMetaFat[semKey]||0;
+  const fatPct=metaFatVal>0?Math.min(100,Math.round(receitaSemana/metaFatVal*100)):0;
+  const tarefasSem=planTarefas.filter(t=>t.semKey===semKey);
+  const tarefasConc=tarefasSem.filter(t=>t.feito).length;
+  const totalAgs=dias.reduce((s,d)=>s+d.agendados.length,0);
 
   document.getElementById('panel-planejamento').innerHTML=`
     <div class="page-header">
-      <div><div class="page-title">Planejamento da Semana</div><div class="page-sub">Metas de entrega por dia</div></div>
+      <div><div class="page-title">Planejamento da Semana</div><div class="page-sub">Organize sua semana — metas, agendamentos, tarefas e notas</div></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn-secondary" onclick="abrirPlanConfig()">⚙️ Configurar metas</button>
+        <button class="btn-secondary" onclick="abrirPlanConfig()">⚙️ Metas de entrega</button>
+        <button class="btn-primary" onclick="abrirModalPlanTarefa()">+ Nova tarefa</button>
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:1.5rem;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:1.25rem;flex-wrap:wrap">
       <button class="btn-secondary" onclick="planSemanaOffset--;renderPlanejamento()">← Anterior</button>
       <span style="font-size:14px;font-weight:600;flex:1;text-align:center;min-width:200px">${labelSemana}</span>
       <button class="btn-secondary" onclick="planSemanaOffset++;renderPlanejamento()">Próxima →</button>
       ${planSemanaOffset!==0?`<button class="btn-secondary" onclick="planSemanaOffset=0;renderPlanejamento()">Hoje</button>`:''}
     </div>
+
+    <div class="metrics" style="grid-template-columns:repeat(4,1fr);margin-bottom:1.25rem">
+      <div class="metric-card">
+        <div class="metric-label">Meta de faturamento</div>
+        <div class="metric-value green">${metaFatVal?fmtBRL(metaFatVal):'Não definido'}</div>
+        <div class="plan-meta-bar"><div class="plan-meta-bar-fill" style="width:${fatPct}%;background:${fatPct>=100?'var(--green)':fatPct>=60?'#f59e0b':'#ef4444'}"></div></div>
+        <div class="metric-sub">${metaFatVal?fatPct+'% · '+fmtBRL(receitaSemana)+' realizado':fmtBRL(receitaSemana)+' realizado'}</div>
+        <button class="btn-sm" style="margin-top:6px" onclick="abrirPlanMetaFat()">Editar meta</button>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Entregas vs. meta</div>
+        <div class="metric-value ${pct>=100?'green':pct>=70?'blue':'red'}">${totalEntregues}/${totalMeta}</div>
+        <div class="plan-meta-bar"><div class="plan-meta-bar-fill" style="width:${pct||0}%;background:${(pct||0)>=100?'var(--green)':(pct||0)>=60?'#f59e0b':'#ef4444'}"></div></div>
+        <div class="metric-sub">${pct!==null?pct+'% atingido':'—'}</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Agendamentos na semana</div>
+        <div class="metric-value orange">${totalAgs}</div>
+        <div class="metric-sub">Ticket médio: ${totalEntregues>0?fmtBRL(receitaSemana/totalEntregues):'—'}</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Tarefas concluídas</div>
+        <div class="metric-value" id="plan-tasks-badge">${tarefasConc}/${tarefasSem.length}</div>
+        <div class="metric-sub">desta semana</div>
+      </div>
+    </div>
+
     <div class="plan-grid" style="grid-template-columns:repeat(${dias.length},1fr)">
       ${dias.map(dia=>{
         const pctDia=dia.meta>0?Math.min(100,Math.round(dia.entregues.length/dia.meta*100)):null;
@@ -6036,37 +6225,53 @@ function renderPlanejamento(){
         if(dia.isHoje) cls+=' is-hoje';
         else if(dia.isPast && pctDia!==null && pctDia<100) cls+=' is-pass-fail';
         else if(dia.isPast && pctDia===100) cls+=' is-pass-ok';
-        return `<div class="${cls}">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+        const nota=(planNotas[dia.iso]||'').replace(/</g,'&lt;');
+        return `<div class="${cls}" style="display:flex;flex-direction:column;gap:4px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
             <div>
               <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text3)">${dia.nome}</div>
               <div style="font-size:20px;font-weight:700;font-family:'DM Mono',monospace;${dia.isHoje?'color:var(--green-dark)':''}">${dia.d.getDate()}</div>
             </div>
-            <button onclick="editarMetaDia('${dia.iso}',${dia.meta})" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:13px;padding:2px" title="Editar meta">✏️</button>
+            <button onclick="editarMetaDia('${dia.iso}',${dia.meta})" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:13px;padding:2px" title="Editar meta do dia">✏️</button>
           </div>
           ${dia.meta>0?`
-            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">${dia.entregues.length}/${dia.meta} entregues</div>
-            <div style="height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;margin-bottom:8px">
+            <div style="font-size:10px;color:var(--text3)">${dia.entregues.length}/${dia.meta} entregues</div>
+            <div style="height:5px;background:var(--surface2);border-radius:3px;overflow:hidden">
               <div style="height:100%;width:${pctDia||0}%;background:${pctDia>=100?'var(--green)':'var(--blue)'};border-radius:3px"></div>
-            </div>`:`<div style="font-size:11px;color:var(--text3);margin-bottom:8px">Sem meta</div>`}
-          ${dia.entregues.slice(0,3).map(v=>`<div style="font-size:11px;padding:2px 0;border-bottom:1px solid var(--border);color:var(--text2)">${esc(v.placa)} ${esc((v.modelo||'').split(' ')[0])}</div>`).join('')}
-          ${dia.entregues.length>3?`<div style="font-size:10px;color:var(--text3);margin-top:3px">+${dia.entregues.length-3} mais</div>`:''}
-          ${dia.isFuturo && dia.agendados.length?`
-            <div style="font-size:10px;font-weight:600;text-transform:uppercase;color:var(--text3);margin-top:6px;margin-bottom:3px">Agendados:</div>
-            ${dia.agendados.slice(0,2).map(a=>`<div style="font-size:11px;color:var(--text2)">${esc(a.hora||'')} ${esc(a.placa||a.cliente||'')}</div>`).join('')}
-          `:''}
+            </div>`:`<div style="font-size:10px;color:var(--text3)">Sem meta</div>`}
+          ${dia.entregues.slice(0,2).map(v=>`<div style="font-size:11px;padding:2px 0;border-bottom:1px solid var(--border);color:var(--text2)">✅ ${esc(v.placa)} ${esc((v.modelo||'').split(' ')[0])}</div>`).join('')}
+          ${dia.entregues.length>2?`<div style="font-size:10px;color:var(--text3)">+${dia.entregues.length-2} entregas</div>`:''}
+          ${dia.agendados.length?`
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text3);margin-top:4px">Agendados</div>
+            ${dia.agendados.slice(0,3).map(a=>`<div class="plan-ag-pill" title="${esc(a.cliente||'')} — ${esc(a.servico||'')}">${esc(a.hora||'')} ${esc((a.cliente||a.placa||'').split(' ')[0])}</div>`).join('')}
+            ${dia.agendados.length>3?`<div style="font-size:10px;color:var(--text3)">+${dia.agendados.length-3} agend.</div>`:''}`:''}
+          <textarea class="plan-nota" placeholder="Notas do dia..." data-iso="${dia.iso}" onblur="salvarNotaDia(this)">${nota}</textarea>
         </div>`;
       }).join('')}
     </div>
+
     <div class="card">
-      <div class="card-title">Resumo da semana</div>
-      <div class="metrics" style="grid-template-columns:repeat(4,1fr)">
-        <div class="metric-card"><div class="metric-label">Entregues</div><div class="metric-value green">${totalEntregues}</div><div class="metric-sub">de ${totalMeta} na meta</div></div>
-        <div class="metric-card"><div class="metric-label">Atingimento</div><div class="metric-value ${pct>=100?'green':pct>=70?'blue':'red'}">${pct!==null?pct+'%':'—'}</div></div>
-        <div class="metric-card"><div class="metric-label">Receita</div><div class="metric-value green">${fmtBRL(receitaSemana)}</div></div>
+      <div class="card-title">Tarefas da semana
+        <div class="actions" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="filter-btn ptf-btn active" onclick="setPlanFiltroTarefas('todas',this)">Todas</button>
+          <button class="filter-btn ptf-btn" onclick="setPlanFiltroTarefas('pendentes',this)">Pendentes</button>
+          <button class="filter-btn ptf-btn" onclick="setPlanFiltroTarefas('concluidas',this)">Concluídas</button>
+          <button class="btn-sm" onclick="abrirModalPlanTarefa()">+ Adicionar</button>
+        </div>
+      </div>
+      <div id="plan-tarefas-sec"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Resumo financeiro da semana</div>
+      <div class="metrics" style="grid-template-columns:repeat(3,1fr)">
+        <div class="metric-card"><div class="metric-label">Receita realizada</div><div class="metric-value green">${fmtBRL(receitaSemana)}</div><div class="metric-sub">${totalEntregues} veículo(s) entregue(s)</div></div>
         <div class="metric-card"><div class="metric-label">Ticket médio</div><div class="metric-value">${totalEntregues>0?fmtBRL(receitaSemana/totalEntregues):'—'}</div></div>
+        <div class="metric-card"><div class="metric-label">Atingimento geral</div><div class="metric-value ${(pct||0)>=100?'green':(pct||0)>=70?'blue':'red'}">${pct!==null?pct+'%':'—'}</div><div class="metric-sub">${totalEntregues}/${totalMeta} entregas</div></div>
       </div>
     </div>`;
+
+  _renderPlanTarefasSec();
 }
 
 function editarMetaDia(iso, metaAtual){
