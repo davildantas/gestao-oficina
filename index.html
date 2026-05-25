@@ -2530,7 +2530,7 @@ function buscarPorTelefone(){
   if(cli){const b=document.getElementById('v-cliente-box');b.style.display='';b.className='success-box';b.innerHTML='✓ Cliente no CRM: <strong>'+esc(cli.nome)+'</strong>';document.getElementById('v-cliente').value=cli.nome;}
 }
 
-function registrarEntrada(){
+async function registrarEntrada(){
   const placa=document.getElementById('v-placa').value.trim().toUpperCase();
   const modelo=document.getElementById('v-modelo').value.trim();
   const cliente=document.getElementById('v-cliente').value.trim();
@@ -2541,8 +2541,9 @@ function registrarEntrada(){
   if(dup&&!confirm(`Já existe ${placa} no pátio (entrou ${fmtData(dup.dataEntrada)}). Continuar?`))return;
   const mecId=document.getElementById('v-mecanico').value;
   const orcTotal=orcItens.reduce((s,it)=>s+(it.mo||0)+(it.pecas||0),0)||parseFloat(document.getElementById('v-orcamento').value)||0;
+  // Monta o objeto SEM id — o Supabase vai gerar o UUID real
   const v={
-    id:'tmp_'+Date.now(),placa,cor:document.getElementById('v-cor').value.trim(),modelo,
+    placa,cor:document.getElementById('v-cor').value.trim(),modelo,
     ano:document.getElementById('v-ano').value.trim(),cliente,
     telefone:document.getElementById('v-telefone').value.trim(),
     servico:document.getElementById('v-servico').value,
@@ -2555,24 +2556,27 @@ function registrarEntrada(){
     registradoPor:session.username,timestampEntrada:new Date().toISOString(),
     kanbanStatus:'aguardando',saida:null,vistoria:null,tempoTrabalhado:0
   };
-  veiculos.push(v);
-  // Auto-vincular CRM
-  const tel=v.telefone.replace(/\D/g,'');
-  if(tel&&!clientes.find(c=>(c.telefone||'').replace(/\D/g,'')===tel)){
-    const novoCliente={nome:v.cliente,telefone:v.telefone,email:'',obs:''};
-    clientes.push({id:'tmp_c_'+Date.now(),...novoCliente});
-    sbSalvarCliente(novoCliente).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
-  }
-  sbSalvarVeiculo(v).then(novoId=>{v.id=novoId;DB.veiculos=veiculos;}).catch(e=>toast('Erro ao salvar OS: '+e.message,'error'));
-  fecharModalId('modal-entrada');
-  logAudit('entrada',`${placa} - ${modelo} - ${cliente}`);
-  toast(`Entrada: ${placa} às ${v.horaEntrada}`,'success');
-  atualizarVeiculos();atualizarDashboard();atualizarBadges();
-  // Abrir vistoria
-  visVeiculoId=v.id;
-  document.getElementById('vis-placa-titulo').textContent=placa;
-  limparVistoria();
-  document.getElementById('modal-vistoria').classList.add('show');
+
+  const btn=document.querySelector('#modal-entrada .btn-primary');
+  await safeOp('Erro ao salvar OS', async()=>{
+    // sbResolverCliente (dentro de sbSalvarVeiculo) já cria/vincula cliente no CRM
+    const novoId = await sbSalvarVeiculo(v);
+    v.id = novoId;
+    veiculos.push(v);
+    DB.veiculos = veiculos;
+    // Sincroniza clientes locais com DB (caso sbResolverCliente tenha criado um novo)
+    if (Array.isArray(DB.clientes)) clientes = DB.clientes;
+
+    fecharModalId('modal-entrada');
+    logAudit('entrada',`${placa} - ${modelo} - ${cliente}`);
+    toast(`Entrada: ${placa} às ${v.horaEntrada}`,'success');
+    atualizarVeiculos();atualizarDashboard();atualizarBadges();
+    // Abrir vistoria com o UUID real
+    visVeiculoId=v.id;
+    document.getElementById('vis-placa-titulo').textContent=placa;
+    limparVistoria();
+    document.getElementById('modal-vistoria').classList.add('show');
+  },{btn});
 }
 
 /* ============ VISTORIA ============ */
