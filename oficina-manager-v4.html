@@ -727,25 +727,25 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
       <div class="brand-name">Oficina<span>Manager</span></div>
     </div>
     <nav class="nav" id="nav-menu">
-      <div class="nav-section" data-role="dono,socio,gerente,colaborador">Principal</div>
-      <button class="nav-item active" data-panel="dashboard" data-role="dono,socio,gerente,colaborador" onclick="showPanel('dashboard',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>Dashboard</button>
-      <button class="nav-item" data-panel="kanban" data-role="dono,socio,gerente" onclick="showPanel('kanban',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 5h3v13H4zm7 0h3v7h-3zm7 0h3v4h-3z"/></svg>Kanban OS</button>
-      <button class="nav-item" data-panel="veiculos" data-role="dono,socio,gerente" onclick="showPanel('veiculos',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg>Veículos</button>
-      <button class="nav-item" data-panel="agenda" data-role="dono,socio,gerente" onclick="showPanel('agenda',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg>Agenda</button>
-      <button class="nav-item" data-panel="planejamento" data-role="dono,socio,gerente" onclick="showPanel('planejamento',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1s-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>Planejamento</button>
-      <button class="nav-item" data-panel="clientes" data-role="dono,socio,gerente" onclick="showPanel('clientes',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>CRM Clientes<span class="nav-badge" id="badge-clientes" style="display:none;"></span></button>
+      <div class="nav-section" data-role="dono,socio,gerente,assistente">Principal</div>
+      <button class="nav-item active" data-panel="dashboard" data-role="dono,socio,gerente,assistente" onclick="showPanel('dashboard',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>Dashboard</button>
+      <button class="nav-item" data-panel="kanban" data-role="dono,socio,gerente,assistente" onclick="showPanel('kanban',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 5h3v13H4zm7 0h3v7h-3zm7 0h3v4h-3z"/></svg>Kanban OS</button>
+      <button class="nav-item" data-panel="veiculos" data-role="dono,socio,gerente,assistente" onclick="showPanel('veiculos',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg>Veículos</button>
+      <button class="nav-item" data-panel="agenda" data-role="dono,socio,gerente,assistente" onclick="showPanel('agenda',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg>Agenda</button>
+      <button class="nav-item" data-panel="planejamento" data-role="dono,socio,gerente,assistente" onclick="showPanel('planejamento',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1s-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>Planejamento</button>
+      <button class="nav-item" data-panel="clientes" data-role="dono,socio,gerente,assistente" onclick="showPanel('clientes',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>CRM Clientes<span class="nav-badge" id="badge-clientes" style="display:none;"></span></button>
       <div class="nav-section" data-role="dono,socio,gerente,assistente">Gestão</div>
       <button class="nav-item" data-panel="estoque" data-role="dono,socio,gerente,assistente" onclick="showPanel('estoque',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-2.18c.07-.44.18-.86.18-1.3C18 2.12 15.88 0 13.3 0c-1.31 0-2.4.52-3.19 1.38L12 3.4l1.9-2.02C14.33 1.14 14.8 1 13.3 1c-.8 0-1.5.37-2 .96l-2.5 2.66L6.5 2.13C5.79 1.41 4.9 1 3.92 1 1.73 1 0 2.73 0 4.92c0 .44.11.86.18 1.3H0v14h20V6z"/></svg>Estoque<span class="nav-badge" id="badge-estoque" style="display:none;"></span></button>
       <button class="nav-item" data-panel="colaboradores" data-role="dono,socio,gerente" onclick="showPanel('colaboradores',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 3-1.34 3-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5C23 14.17 18.33 13 16 13z"/></svg>Colaboradores</button>
-      <button class="nav-item" data-panel="salarios" data-role="dono,socio,gerente" onclick="showPanel('salarios',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>Salários</button>
-      <div class="nav-section" data-role="dono,socio,gerente">Análise</div>
-      <button class="nav-item" data-panel="relatorio" data-role="dono,socio,gerente" onclick="showPanel('relatorio',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>Relatório</button>
-      <button class="nav-item" data-panel="relatorios-adv" data-role="dono,socio,gerente" onclick="showPanel('relatorios-adv',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M11 2v20c-5.07-.5-9-4.79-9-10s3.93-9.5 9-10zm2.03 0v8.99H22c-.47-4.74-4.24-8.52-8.97-8.99zm0 11.01V22c4.74-.47 8.5-4.25 8.97-8.99h-8.97z"/></svg>Rel. Avançados</button>
-      <div class="nav-section" data-role="dono,socio,gerente">Financeiro</div>
-      <button class="nav-item" data-panel="fluxo-caixa" data-role="dono,socio,gerente" onclick="showPanel('fluxo-caixa',this)"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>Fluxo de Caixa</button>
-      <div class="nav-section">Operacional</div>
-      <button class="nav-item" data-panel="fila-espera" data-role="dono,socio,gerente,assistente,colaborador" onclick="showPanel('fila-espera',this)"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>Fila de Espera<span class="nav-badge" id="badge-fila" style="display:none;"></span></button>
-      <button class="nav-item" data-panel="comunicacao" data-role="dono,socio,gerente,assistente,colaborador" onclick="showPanel('comunicacao',this)"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>Comunicação<span class="nav-badge" id="badge-aniversarios" style="display:none;"></span></button>
+      <button class="nav-item" data-panel="salarios" data-role="dono,socio" onclick="showPanel('salarios',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>Salários</button>
+      <div class="nav-section" data-role="dono,socio">Análise</div>
+      <button class="nav-item" data-panel="relatorio" data-role="dono,socio" onclick="showPanel('relatorio',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>Relatório</button>
+      <button class="nav-item" data-panel="relatorios-adv" data-role="dono,socio" onclick="showPanel('relatorios-adv',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M11 2v20c-5.07-.5-9-4.79-9-10s3.93-9.5 9-10zm2.03 0v8.99H22c-.47-4.74-4.24-8.52-8.97-8.99zm0 11.01V22c4.74-.47 8.5-4.25 8.97-8.99h-8.97z"/></svg>Rel. Avançados</button>
+      <div class="nav-section" data-role="dono,socio">Financeiro</div>
+      <button class="nav-item" data-panel="fluxo-caixa" data-role="dono,socio" onclick="showPanel('fluxo-caixa',this)"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>Fluxo de Caixa</button>
+      <div class="nav-section" data-role="dono,socio,gerente,assistente">Operacional</div>
+      <button class="nav-item" data-panel="fila-espera" data-role="dono,socio,gerente,assistente" onclick="showPanel('fila-espera',this)"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>Fila de Espera<span class="nav-badge" id="badge-fila" style="display:none;"></span></button>
+      <button class="nav-item" data-panel="comunicacao" data-role="dono,socio,gerente,assistente" onclick="showPanel('comunicacao',this)"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>Comunicação<span class="nav-badge" id="badge-aniversarios" style="display:none;"></span></button>
       <div class="nav-section" data-role="dono,socio">Sistema</div>
       <button class="nav-item" data-panel="config" data-role="dono,socio" onclick="showPanel('config',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/></svg>Configurações</button>
       <button class="nav-item" data-panel="auditoria" data-role="dono,socio" onclick="showPanel('auditoria',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>Auditoria</button>
@@ -1095,7 +1095,6 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
             <select id="convite-role" style="height:32px;padding:0 8px;border:1px solid var(--border2);border-radius:var(--radius);font-size:12px;background:var(--surface);color:var(--text);font-family:'DM Sans',sans-serif;">
               <option value="operador">Operador</option>
               <option value="gerente">Gerente</option>
-              <option value="colaborador">Colaborador</option>
               <option value="assistente">Assistente</option>
             </select>
             <button class="btn-primary" onclick="gerarConvite()">+ Gerar codigo</button>
@@ -1310,9 +1309,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
     <div class="form-row"><div class="form-group"><label>Senha *</label><input type="password" id="user-pass" placeholder="Mínimo 4 caracteres"></div><div class="form-group"><label>Nível de acesso</label><select id="user-role">
           <option value="dono">Dono — Acesso total</option>
           <option value="socio">Sócio — Acesso total</option>
-          <option value="gerente">Gerente — Acesso com limitações financeiras</option>
-          <option value="assistente">Assistente — Apenas estoque e operacional</option>
-          <option value="colaborador">Colaborador — Dashboard e operacional</option>
+          <option value="gerente">Gerente — Acesso operacional completo</option>
+          <option value="assistente">Assistente — Acesso operacional completo</option>
         </select></div></div>
     <div class="modal-actions"><button class="btn-secondary" onclick="fecharModalId('modal-user')">Cancelar</button><button class="btn-primary" onclick="salvarUser()">Salvar</button></div>
   </div>
@@ -1858,7 +1856,7 @@ function entrarApp(){
   atualizarBadges();
   iniciarRelogio();
   sbInscreverRealtime(_onRealtime);
-  if(session.role==='colaborador')showPanel('veiculos',document.querySelector('[data-panel="veiculos"]'));
+  if(session.role==='assistente')showPanel('dashboard',document.querySelector('[data-panel="dashboard"]'));
   else showPanel('dashboard',document.querySelector('[data-panel="dashboard"]'));
 }
 
@@ -4253,9 +4251,8 @@ entrarApp = function(){
 const ROLE_ACCESS = {
   dono:        ['dashboard','kanban','veiculos','agenda','clientes','estoque','colaboradores','salarios','fluxo-caixa','fila-espera','comunicacao','relatorio','relatorios-adv','config','auditoria'],
   socio:       ['dashboard','kanban','veiculos','agenda','clientes','estoque','colaboradores','salarios','fluxo-caixa','fila-espera','comunicacao','relatorio','relatorios-adv','config','auditoria'],
-  gerente:     ['dashboard','kanban','veiculos','agenda','clientes','estoque','colaboradores','salarios','fluxo-caixa','fila-espera','comunicacao','relatorio','relatorios-adv'],
-  assistente:  ['estoque','fila-espera','comunicacao'],
-  colaborador: ['dashboard','fila-espera','comunicacao'],
+  gerente:     ['dashboard','kanban','veiculos','agenda','planejamento','clientes','estoque','colaboradores','fila-espera','comunicacao'],
+  assistente:  ['dashboard','kanban','veiculos','agenda','planejamento','clientes','estoque','fila-espera','comunicacao'],
 };
 
 // Painéis financeiros onde gerente tem acesso limitado (somente leitura)
