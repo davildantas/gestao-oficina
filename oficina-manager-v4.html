@@ -1311,6 +1311,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
           <option value="socio">Sócio — Acesso total</option>
           <option value="gerente">Gerente — Acesso operacional completo</option>
           <option value="assistente">Assistente — Acesso operacional completo</option>
+          <option value="gerente">Gerente — Operacional sem financeiro</option>
+          <option value="assistente">Assistente — Apenas estoque e operacional</option>
         </select></div></div>
     <div class="modal-actions"><button class="btn-secondary" onclick="fecharModalId('modal-user')">Cancelar</button><button class="btn-primary" onclick="salvarUser()">Salvar</button></div>
   </div>
@@ -1858,6 +1860,7 @@ function entrarApp(){
   sbInscreverRealtime(_onRealtime);
   if(session.role==='assistente')showPanel('dashboard',document.querySelector('[data-panel="dashboard"]'));
   else showPanel('dashboard',document.querySelector('[data-panel="dashboard"]'));
+  showPanel('dashboard',document.querySelector('[data-panel="dashboard"]'));
 }
 
 function _onRealtime(tabela,evento,registro){
@@ -4256,7 +4259,7 @@ const ROLE_ACCESS = {
 };
 
 // Painéis financeiros onde gerente tem acesso limitado (somente leitura)
-const GERENTE_READONLY = ['fluxo-caixa'];
+const GERENTE_READONLY = [];
 // Ações que apenas dono/socio podem fazer
 function somenteDono(){
   return session && (session.role==='dono'||session.role==='socio');
