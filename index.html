@@ -3166,6 +3166,7 @@ function editCliente(id){
   document.getElementById('modal-cliente-title').textContent='Editar cliente';document.getElementById('cliente-id').value=c.id;
   document.getElementById('cli-nome').value=c.nome||'';document.getElementById('cli-tel').value=c.telefone||'';
   document.getElementById('cli-email').value=c.email||'';document.getElementById('cli-doc').value=c.doc||'';document.getElementById('cli-obs').value=c.obs||'';
+  document.getElementById('cli-nasc').value=c.nasc||'';document.getElementById('cli-filial').value=c.filial||'';
   document.getElementById('modal-cliente').classList.add('show');
 }
 async function salvarCliente(){
@@ -3178,7 +3179,7 @@ async function salvarCliente(){
     const dup=clientes.find(c=>(c.telefone||'').replace(/\D/g,'')===tel.replace(/\D/g,'') && tel.length>=8);
     if(dup && !confirmarAcao(`Já existe cliente "${dup.nome}" com este telefone. Cadastrar mesmo assim?`))return;
   }
-  const dados={nome,telefone:tel,email:document.getElementById('cli-email').value.trim(),doc:document.getElementById('cli-doc').value.trim(),obs:document.getElementById('cli-obs').value.trim()};
+  const dados={nome,telefone:tel,email:document.getElementById('cli-email').value.trim(),doc:document.getElementById('cli-doc').value.trim(),obs:document.getElementById('cli-obs').value.trim(),nasc:document.getElementById('cli-nasc').value||null,filial:document.getElementById('cli-filial').value.trim()};
   const btn=document.querySelector('#modal-cliente .btn-primary');
   await withLock('salvar-cliente-'+(id||'novo'), async()=>{
     await safeOp('Erro ao salvar cliente', async()=>{
@@ -5057,40 +5058,6 @@ function enviarOrcWpp(){
   logAudit('orcamento-wpp',v.placa+' — '+fmtBRL(v.orcamento));
   toast('WhatsApp aberto','success');
 }
-
-/* ======================================================= */
-/* PATCH: salvarCliente com nasc/filial                  */
-/* ======================================================= */
-const _salvarClienteOrig = salvarCliente;
-salvarCliente = function(){
-  const id=document.getElementById('cliente-id').value;
-  const nome=document.getElementById('cli-nome').value.trim();
-  const tel=document.getElementById('cli-tel').value.trim();
-  if(!nome){toast('Informe o nome','error');return;}
-  const dados={nome,telefone:tel,email:document.getElementById('cli-email').value.trim(),doc:document.getElementById('cli-doc').value.trim(),obs:document.getElementById('cli-obs').value.trim(),nasc:document.getElementById('cli-nasc').value||null,filial:document.getElementById('cli-filial').value.trim()};
-  if(id){const i=clientes.findIndex(x=>x.id===parseInt(id));if(i>=0)clientes[i]={...clientes[i],...dados};}
-  else clientes.push({id:Date.now(),...dados,criadoEm:new Date().toISOString()});
-  sbSalvarCliente(id?clientes.find(x=>x.id===parseInt(id)):clientes[clientes.length-1]).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
-  fecharModalId('modal-cliente');atualizarClientes();atualizarBadges();verificarAniversariantes();toast('Cliente salvo','success');
-};
-
-/* ======================================================= */
-/* PATCH: editCliente com nasc/filial                    */
-/* ======================================================= */
-const _editClienteOrig = editCliente;
-editCliente = function(id){
-  const c=clientes.find(x=>x.id===id);if(!c)return;
-  document.getElementById('modal-cliente-title').textContent='Editar cliente';
-  document.getElementById('cliente-id').value=c.id;
-  document.getElementById('cli-nome').value=c.nome||'';
-  document.getElementById('cli-tel').value=c.telefone||'';
-  document.getElementById('cli-email').value=c.email||'';
-  document.getElementById('cli-doc').value=c.doc||'';
-  document.getElementById('cli-obs').value=c.obs||'';
-  document.getElementById('cli-nasc').value=c.nasc||'';
-  document.getElementById('cli-filial').value=c.filial||'';
-  document.getElementById('modal-cliente').classList.add('show');
-};
 
 /* ======================================================= */
 /* PATCH: showPanel para novos painéis                   */
