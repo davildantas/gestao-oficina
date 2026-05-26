@@ -1184,7 +1184,6 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
             <select id="convite-role" style="height:32px;padding:0 8px;border:1px solid var(--border2);border-radius:var(--radius);font-size:12px;background:var(--surface);color:var(--text);font-family:'DM Sans',sans-serif;">
               <option value="operador">Operador</option>
               <option value="gerente">Gerente</option>
-              <option value="colaborador">Colaborador</option>
               <option value="assistente">Assistente</option>
             </select>
             <button class="btn-primary" onclick="gerarConvite()">+ Gerar codigo</button>
@@ -1707,9 +1706,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
     <div class="form-row"><div class="form-group"><label>Senha *</label><input type="password" id="user-pass" placeholder="Mínimo 4 caracteres"></div><div class="form-group"><label>Nível de acesso</label><select id="user-role">
           <option value="dono">Dono — Acesso total</option>
           <option value="socio">Sócio — Acesso total</option>
-          <option value="gerente">Gerente — Acesso com limitações financeiras</option>
-          <option value="assistente">Assistente — Apenas estoque e operacional</option>
-          <option value="colaborador">Colaborador — Dashboard e operacional</option>
+          <option value="gerente">Gerente — Acesso operacional completo (sem financeiro)</option>
+          <option value="assistente">Assistente — Acesso operacional completo</option>
         </select></div></div>
     <div class="modal-actions"><button class="btn-secondary" onclick="fecharModalId('modal-user')">Cancelar</button><button class="btn-primary" onclick="salvarUser()">Salvar</button></div>
   </div>
