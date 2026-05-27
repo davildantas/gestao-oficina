@@ -2384,6 +2384,7 @@ function atualizarKanban(){
       if(col.id==='pronto'&&tel)acoes+=`<a href="https://wa.me/55${tel}?text=${encodeURIComponent('Olá '+v.cliente+'! Seu veículo ('+v.placa+' - '+v.modelo+') está pronto para retirada! 😊')}" target="_blank" class="kanban-btn whatsapp">📲 WhatsApp</a>`;
       if(col.id==='pronto')acoes+=`<button class="kanban-btn primary" onclick="abrirModalSaida(${v.id})">Registrar saída</button>`;
       acoes+=`<button class="kanban-btn" onclick="abrirDetalhes(${v.id})">🔍</button>`;
+      acoes+=`<button class="kanban-btn" onclick="novoOrcamentoDeOS(${v.id})" title="Criar orçamento">📋</button>`;
       card.innerHTML=`<div><span class="kanban-card-placa">${esc(v.placa)}</span>${v.orcamentoStatus?` <span class="badge ${esc(v.orcamentoStatus)}" style="font-size:9px;">${esc(v.orcamentoStatus)}</span>`:''}</div>
         <div class="kanban-card-title">${esc(v.modelo)}${v.cor?' · '+esc(v.cor):''}</div>
         <div class="kanban-card-sub">${esc(v.cliente)} · ${esc(v.servico)}</div>
@@ -2668,7 +2669,8 @@ function abrirDetalhes(id){
   </table>
   ${!v.saida?`<button class="btn-primary" onclick="fecharModalId('modal-detalhes');abrirModalSaida(${v.id})">Registrar saída</button> `:''}
   <button class="btn-secondary" onclick="imprimirOS(${v.id})">🖨️ OS</button>
-  ${v.saida?` <button class="btn-secondary" onclick="document.getElementById('saida-id').value=${v.id};imprimirRecibo()">🖨️ Recibo</button>`:''}`;
+  ${v.saida?` <button class="btn-secondary" onclick="document.getElementById('saida-id').value=${v.id};imprimirRecibo()">🖨️ Recibo</button>`:''}
+  <button class="btn-secondary" onclick="fecharModalId('modal-detalhes');novoOrcamentoDeOS(${v.id})" title="Criar orçamento para esta OS">📋 Orçamento</button>`;
   document.getElementById('modal-detalhes').classList.add('show');
 }
 
@@ -3118,7 +3120,7 @@ function atualizarClientes(){
         <td style="font-size:12px;color:var(--text3);">${esc(c.doc||'-')}</td>
         <td style="font-size:12px;">${placas.slice(0,3).map(p=>`<span class="placa" style="font-size:10px;">${esc(p)}</span>`).join(' ')} (${os.length})</td>
         <td style="font-size:12px;">${os[0]?fmtData(os[0].dataEntrada):'-'}</td>
-        <td style="text-align:right;white-space:nowrap;"><button class="btn-edit" onclick="verHistCliente(${c.id})">Histórico</button><button class="btn-sm" onclick="editCliente(${c.id})">Editar</button><button class="btn-danger" onclick="delCliente(${c.id})">Excluir</button></td>
+        <td style="text-align:right;white-space:nowrap;"><button class="btn-edit" onclick="verHistCliente(${c.id})">Histórico</button><button class="btn-sm" onclick="novoOrcamentoParaCliente('${esc(c.id)}','${esc(c.nome)}')">+ Orçamento</button><button class="btn-sm" onclick="editCliente(${c.id})">Editar</button><button class="btn-danger" onclick="delCliente(${c.id})">Excluir</button></td>
       </tr>`;
     }).join('')}</tbody></table>`;
 }
@@ -3134,7 +3136,21 @@ function verHistCliente(id){
       <div class="metric-card"><div class="metric-label">Receita</div><div class="metric-value orange">${fmtBRL(rec)}</div></div>
     </div>
     ${!os.length?'<div class="empty">Nenhuma OS encontrada</div>':`<table class="table"><thead><tr><th>Placa</th><th>Modelo</th><th>Serviço</th><th>Entrada</th><th>Status</th><th>Valor</th></tr></thead>
-    <tbody>${os.map(v=>`<tr><td><span class="placa">${esc(v.placa)}</span></td><td>${esc(v.modelo)}</td><td><span class="badge servico">${esc(v.servico)}</span></td><td class="mono" style="font-size:12px;">${fmtData(v.dataEntrada)}</td><td>${v.saida?'<span class="badge entregue">Entregue</span>':'<span class="badge no-patio">No pátio</span>'}</td><td class="mono">${v.saida&&v.saida.valor?fmtBRL(v.saida.valor):'-'}</td></tr>`).join('')}</tbody></table>`}`;
+    <tbody>${os.map(v=>`<tr><td><span class="placa">${esc(v.placa)}</span></td><td>${esc(v.modelo)}</td><td><span class="badge servico">${esc(v.servico)}</span></td><td class="mono" style="font-size:12px;">${fmtData(v.dataEntrada)}</td><td>${v.saida?'<span class="badge entregue">Entregue</span>':'<span class="badge no-patio">No pátio</span>'}</td><td class="mono">${v.saida&&v.saida.valor?fmtBRL(v.saida.valor):'-'}</td></tr>`).join('')}</tbody></table>`}
+    ${(()=>{
+      const orcs=(typeof orcamentos!=='undefined'?orcamentos:[]).filter(o=>o.cliente_id===c.id);
+      if(!orcs.length) return '';
+      const statusLabel={aguardando:'Aguardando',aprovado:'Aprovado',cancelado:'Cancelado',agendado:'Agendado'};
+      return `<div style="margin-top:14px;"><div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--text3);letter-spacing:.05em;margin-bottom:8px;">Orçamentos (${orcs.length})</div>
+      <table class="table"><thead><tr><th>Nº</th><th>Veículo</th><th>Status</th><th>Total</th><th></th></tr></thead>
+      <tbody>${orcs.map(o=>`<tr>
+        <td class="mono" style="color:var(--green-dark);font-weight:700;">Nº${o.numero}</td>
+        <td style="font-size:12px;">${esc(o.veiculo_modelo||'—')} ${o.veiculo_placa?'· '+o.veiculo_placa:''}</td>
+        <td><span class="badge orc-${esc(o.status)}">${esc(statusLabel[o.status]||o.status)}</span></td>
+        <td class="mono" style="font-size:12px;">${fmtBRL((o._servicos||[]).reduce((s,sv)=>s+parseFloat(sv.valor||0),0))}</td>
+        <td><button class="btn-sm" onclick="fecharModalId('modal-hist-cliente');showPanel('orcamentos',document.querySelector('[data-panel=\\'orcamentos\\']'));setTimeout(()=>abrirDetalheOrc('${esc(o.id)}'),80)">Abrir</button></td>
+      </tr>`).join('')}</tbody></table></div>`;
+    })()}`;
   document.getElementById('modal-hist-cliente').classList.add('show');
 }
 
@@ -5576,6 +5592,63 @@ sbVerificarSessao().then(sessao => {
     await handle(db.from('orcamento_lancamentos').delete().eq('id',id));
     orcLancamentos = orcLancamentos.filter(l=>l.id!==id);
     renderLancamentos();
+  };
+
+  // ── Integrações com outras telas ──────────────────────
+
+  // Chamado do CRM: cria orçamento pré-preenchido com o cliente
+  window.novoOrcamentoParaCliente = async function(clienteId, clienteNome){
+    try {
+      const numero = gerarNumero();
+      const novo = await handle(db.from('orcamentos').insert({
+        workspace_id: wsId(),
+        numero,
+        status: 'aguardando',
+        tipo_veiculo: 'sedan',
+        cliente_id: clienteId || null,
+      }).select().single());
+      if(!novo){ toast('Erro ao criar orçamento','error'); return; }
+      novo._servicos = [];
+      orcamentos.unshift(novo);
+      showPanel('orcamentos', document.querySelector('[data-panel="orcamentos"]'));
+      setTimeout(()=>abrirDetalheOrc(novo.id), 80);
+      toast('Orçamento criado para '+clienteNome,'success');
+    } catch(e){
+      if(e.message&&e.message.includes('does not exist'))
+        toast('Execute a migration SQL no Supabase antes de usar Orçamentos','error');
+      else toast('Erro: '+e.message,'error');
+    }
+  };
+
+  // Chamado do Kanban / Detalhes de Veículo: cria orçamento pré-preenchido com dados da OS
+  window.novoOrcamentoDeOS = async function(veiculoId){
+    try {
+      const v = (typeof veiculos!=='undefined'?veiculos:[]).find(x=>x.id===veiculoId);
+      const cli = v && (DB.clientes||[]).find(c=>c.nome===v.cliente||c.telefone===v.telefone);
+      const numero = gerarNumero();
+      const novo = await handle(db.from('orcamentos').insert({
+        workspace_id: wsId(),
+        numero,
+        status: 'aguardando',
+        tipo_veiculo: 'sedan',
+        cliente_id: cli ? cli.id : null,
+        veiculo_modelo: v ? (v.modelo||null) : null,
+        veiculo_placa: v ? (v.placa||null) : null,
+        veiculo_ano: v ? (v.ano||null) : null,
+        veiculo_cor: v ? (v.cor||null) : null,
+        veiculo_km: v && v.km ? parseFloat(v.km) : null,
+      }).select().single());
+      if(!novo){ toast('Erro ao criar orçamento','error'); return; }
+      novo._servicos = [];
+      orcamentos.unshift(novo);
+      showPanel('orcamentos', document.querySelector('[data-panel="orcamentos"]'));
+      setTimeout(()=>abrirDetalheOrc(novo.id), 80);
+      toast('Orçamento criado'+(v?' para '+v.placa:''),'success');
+    } catch(e){
+      if(e.message&&e.message.includes('does not exist'))
+        toast('Execute a migration SQL no Supabase antes de usar Orçamentos','error');
+      else toast('Erro: '+e.message,'error');
+    }
   };
 
   // ── Inicializar quando painel abrir ────────────────────
