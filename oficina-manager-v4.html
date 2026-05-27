@@ -5065,17 +5065,26 @@ sbVerificarSessao().then(sessao => {
 
   // ── Novo orçamento ─────────────────────────────────────
   window.novoOrcamento = async function(){
-    const numero = gerarNumero();
-    const novo = await handle(db.from('orcamentos').insert({
-      workspace_id: wsId(),
-      numero,
-      status: 'aguardando',
-      tipo_veiculo: 'sedan',
-    }).select().single());
-    if(!novo) return;
-    novo._servicos = [];
-    orcamentos.unshift(novo);
-    abrirDetalheOrc(novo.id);
+    try {
+      const numero = gerarNumero();
+      const novo = await handle(db.from('orcamentos').insert({
+        workspace_id: wsId(),
+        numero,
+        status: 'aguardando',
+        tipo_veiculo: 'sedan',
+      }).select().single());
+      if(!novo) { toast('Erro ao criar orçamento','error'); return; }
+      novo._servicos = [];
+      orcamentos.unshift(novo);
+      abrirDetalheOrc(novo.id);
+    } catch(e) {
+      if(e.message && e.message.includes('does not exist')) {
+        toast('Execute a migration SQL no Supabase antes de usar os Orçamentos','error');
+      } else {
+        toast('Erro: '+e.message,'error');
+      }
+      console.error('[novoOrcamento]', e);
+    }
   };
 
   function gerarNumero(){
