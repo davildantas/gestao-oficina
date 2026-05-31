@@ -57,12 +57,13 @@ todas as queries — sem nenhum código adicional no frontend.
 
 | Role | Pode fazer |
 |---|---|
-| `dono` | Tudo, incluindo criar usuários, editar config, ver auditoria |
-| `gerente` | Operações financeiras, relatórios, estoque, agenda |
-| `operador` | Kanban, agenda, visualizar veículos; sem acesso financeiro |
+| `dono` / `socio` | Tudo: usuários, config, auditoria, financeiro, salários/remuneração |
+| `gerente` | Operacional + cadastro de colaboradores (sem remuneração nem financeiro) |
+| `assistente` / `operador` / `colaborador` | Operacional: Kanban, agenda, veículos, orçamentos, estoque |
 
 As restrições de role são implementadas no **cliente** (ocultando seções da UI)
-e reforçadas via **RLS policies** adicionais para operações críticas.
+**e** reforçadas no banco via **RLS por role** (migration `20260530_rls-por-role.sql`):
+financeiro, auditoria e remuneração ficam restritos a dono/socio; ver `RLS-PROPOSAL.md`.
 
 ## Fluxo de Dados (exemplo: mover veículo no Kanban)
 

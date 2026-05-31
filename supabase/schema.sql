@@ -20,13 +20,14 @@ create table public.workspaces (
 alter table public.workspaces enable row level security;
 
 -- ─── PROFILES (extensão de auth.users) ───────────────────────
--- role: 'dono' | 'gerente' | 'operador'
+-- role: 'dono' | 'socio' | 'gerente' | 'assistente' | 'operador' | 'colaborador'
+-- (a lista foi expandida em convites-migration.sql; a UI usa dono/socio/gerente/assistente)
 create table public.profiles (
   id           uuid primary key references auth.users(id) on delete cascade,
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
   nome         text not null,
   username     text not null,
-  role         text not null default 'operador' check (role in ('dono','gerente','operador')),
+  role         text not null default 'operador' check (role in ('dono','socio','gerente','operador','assistente','colaborador')),
   ativo        boolean not null default true,
   criado_em    timestamptz not null default now()
 );
