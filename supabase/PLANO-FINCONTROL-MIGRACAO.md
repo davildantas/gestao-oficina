@@ -41,7 +41,18 @@ Isso é o que torna isto um projeto em fases, não um commit.
 - Remover o double-write (`fcLancar`) e corrigir o rótulo enganoso "Conectado ao
   Supabase" no card do FinControl.
 
-### Fase 1 — Lançamentos unificados (núcleo)
+### Fase 1 — Lançamentos unificados (núcleo) — ✅ IMPLEMENTADA
+Entregue: migration `20260531_fincontrol-fase1.sql` (estende `lancamentos` com
+forma/centro/origem/fc_id/meta + índice único idempotente); botão "Importar
+lançamentos p/ nuvem" no painel FinControl (`importarFinControlLancamentos`,
+dedupe por fc_id, não-destrutivo); nova aba **"☁️ Lançamentos (nuvem)"** no Fluxo
+de Caixa exibindo `DB.lancamentos` com totais.
+> ⚠️ Limitação conhecida: os **cards do topo** do Fluxo de Caixa ("Entradas no mês"
+> etc.) ainda derivam do modelo antigo (veiculos.saida + pagamentos), não de
+> `lancamentos`. Unificar as métricas para ler `lancamentos` fica para uma fase
+> seguinte (refactor maior). A aba nova já mostra o ledger unificado com seus totais.
+
+Detalhe original do plano:
 - Estender `lancamentos` com: `forma text`, `centro text` (ou FK), `conciliado bool`,
   e um `origem text` (p/ rastrear 'oficina' vs 'fincontrol' e dedupe).
 - Importador: 520 `fc_lanc` → `lancamentos`, **deduplicando** contra os lançamentos

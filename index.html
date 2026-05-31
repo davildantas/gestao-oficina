@@ -1437,6 +1437,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
           <button class="tab-btn" onclick="setFcTab('salarios',this)">Saídas (salários)</button>
           <button class="tab-btn" onclick="setFcTab('notas',this)">Notas / recibos emitidos</button>
           <button class="tab-btn" onclick="setFcTab('seguradoras',this)">🏢 Seguradoras</button>
+          <button class="tab-btn" onclick="setFcTab('lancamentos',this)">☁️ Lançamentos (nuvem)</button>
         </div>
         <div id="fc-extrato"></div>
       </div>
@@ -1600,6 +1601,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
       <div class="page-header">
         <div><div class="page-title">FinControl Pro</div><div class="page-sub">Sistema financeiro completo — dados em localStorage do navegador</div></div>
         <div style="display:flex;gap:8px">
+          <button class="btn-primary" id="btn-import-fc" onclick="importarFinControlLancamentos()" title="Copia os lançamentos do FinControl deste navegador para a nuvem (Fluxo de Caixa). Seguro repetir.">⬆ Importar lançamentos p/ nuvem</button>
           <button class="btn-secondary" onclick="fcAbrirNovaAba()">↗ Abrir em nova aba</button>
           <button class="btn-secondary" onclick="fcRecarregarIframe()">↻ Recarregar</button>
         </div>
@@ -4916,7 +4918,26 @@ function atualizarFcExtrato(){
   const {ano,mes}=mesSel('fc-mes');
   const refKey=ano+'-'+pad(mes+1);
   const el=document.getElementById('fc-extrato');
-  if(fcTabAtual==='receitas'){
+  if(fcTabAtual==='lancamentos'){
+    const lst=(DB.lancamentos||[]).filter(l=>(l.data||'').startsWith(refKey)).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+    if(!lst.length){el.innerHTML='<div class="empty">Sem lançamentos no período (use “Importar lançamentos p/ nuvem” no FinControl).</div>';return;}
+    const ent=lst.filter(l=>l.tipo==='entrada').reduce((s,l)=>s+(Number(l.valor)||0),0);
+    const sai=lst.filter(l=>l.tipo==='saida').reduce((s,l)=>s+(Number(l.valor)||0),0);
+    el.innerHTML=`<div style="display:flex;gap:18px;margin-bottom:10px;font-size:13px;">
+        <span>Entradas: <strong class="fc-entrada">${fmtBRL(ent)}</strong></span>
+        <span>Saídas: <strong class="fc-saida">${fmtBRL(sai)}</strong></span>
+        <span>Saldo: <strong>${fmtBRL(ent-sai)}</strong></span>
+        <span style="color:var(--text3)">${lst.length} lançamento(s)</span></div>
+      <table class="table"><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Forma</th><th>Origem</th><th>Valor</th></tr></thead>
+      <tbody>${lst.map(l=>`<tr>
+        <td class="mono" style="font-size:12px;">${fmtData(l.data)}</td>
+        <td style="font-size:12px;">${esc(l.descricao)}${l.centro?` <span class="badge servico">${esc(l.centro)}</span>`:''}</td>
+        <td style="font-size:12px;">${esc(l.categoria||'—')}</td>
+        <td style="font-size:12px;">${esc(l.forma||'—')}</td>
+        <td style="font-size:11px;color:var(--text3);">${esc(l.origem||'—')}</td>
+        <td class="mono ${l.tipo==='entrada'?'fc-entrada':'fc-saida'}">${l.tipo==='saida'?'-':''}${fmtBRL(Number(l.valor)||0)}</td>
+      </tr>`).join('')}</tbody></table>`;
+  } else if(fcTabAtual==='receitas'){
     const saiMes=veiculos.filter(v=>v.saida&&v.saida.data&&v.saida.data.startsWith(refKey)).sort((a,b)=>b.saida.data.localeCompare(a.saida.data));
     if(!saiMes.length){el.innerHTML='<div class="empty">Sem receitas no período</div>';return;}
     el.innerHTML=`<table class="table"><thead><tr><th>Data</th><th>Placa / Cliente</th><th>Serviço</th><th>Forma</th><th>Valor</th></tr></thead>
@@ -6794,6 +6815,48 @@ function fcRecarregarIframe(){
   if(ifr){ ifr.src = FC_IFRAME_SRC + '?t=' + Date.now(); }
 }
 function fcAbrirNovaAba(){ window.open(FC_IFRAME_SRC, '_blank'); }
+
+// (Fase 1) Importa os lançamentos do FinControl (localStorage fc_lanc) para a
+// tabela lancamentos do Supabase. Idempotente (dedupe por fc_id) e não-destrutivo
+// (não apaga o fc_lanc). Deve ser rodado no navegador que tem os dados.
+function _fcLancParaLancamento(l){
+  return {
+    workspace_id: wsId(),
+    tipo:      (l.tipo==='entrada'||l.tipo==='saida') ? l.tipo : 'saida',
+    descricao: (l.desc||'').toString().trim() || 'Sem descrição',
+    valor:     Number(l.valor)||0,
+    categoria: l.cat || null,
+    data:      l.data || hojeISO(),
+    obs:       l.obs || null,
+    forma:     l.forma || null,
+    centro:    l.centro || null,
+    origem:    'fincontrol',
+    fc_id:     String(l.id),
+    meta:      { tags:l.tags||[], favorito:!!l.favorito, vendedorId:l.vendedorId||null, recId:l.recId||null }
+  };
+}
+async function importarFinControlLancamentos(){
+  if(!hasRole('dono','socio')){ toast('Acesso restrito ao financeiro.','error'); return; }
+  let lista=[];
+  try{ lista=JSON.parse(localStorage.getItem('fc_lanc')||'[]'); }catch(e){ lista=[]; }
+  const validos=(Array.isArray(lista)?lista:[]).filter(l=>l && !l.deletedAt && (Number(l.valor)||0)!==0 && l.id!=null);
+  if(!validos.length){ toast('Nenhum lançamento do FinControl encontrado neste navegador.','error'); return; }
+  if(!confirm(`Importar ${validos.length} lançamento(s) do FinControl para a nuvem (Fluxo de Caixa)?\n\nÉ seguro repetir: lançamentos já importados são atualizados, não duplicados.`)) return;
+  const rows=validos.map(_fcLancParaLancamento);
+  const btn=document.getElementById('btn-import-fc');
+  await safeOp('Erro ao importar lançamentos', async()=>{
+    let ok=0;
+    for(let i=0;i<rows.length;i+=100){
+      await handle(db.from('lancamentos').upsert(rows.slice(i,i+100),{onConflict:'workspace_id,fc_id'}));
+      ok+=Math.min(100, rows.length-i);
+    }
+    DB.lancamentos=await handle(db.from('lancamentos').select('*').eq('workspace_id',wsId()).order('data',{ascending:false}));
+    _sincronizarEstado();
+    if(document.getElementById('panel-fluxo-caixa')?.classList.contains('active')) atualizarFluxoCaixa();
+    logAudit('fincontrol','importou '+ok+' lançamento(s) do FinControl para a nuvem');
+    toast(`${ok} lançamento(s) importados para o Fluxo de Caixa.`,'success');
+  },{btn,loadingText:'Importando…'});
+}
 
 /* (Fase 0) Hooks de double-write no localStorage removidos.
    As saídas de OS, salários e compras já são lançados no Supabase
