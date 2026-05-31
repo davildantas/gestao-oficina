@@ -3625,7 +3625,7 @@ function verHistCliente(id){
     </div>
     ${!os.length?'<div class="empty">Nenhuma OS encontrada</div>':`<table class="table"><thead><tr><th>Placa</th><th>Modelo</th><th>Serviço</th><th>Entrada</th><th>Status</th><th>Valor</th></tr></thead>
     <tbody>${os.map(v=>`<tr><td><span class="placa">${esc(v.placa)}</span></td><td>${esc(v.modelo)}</td><td><span class="badge servico">${esc(v.servico)}</span></td><td class="mono" style="font-size:12px;">${fmtData(v.dataEntrada)}</td><td>${v.saida?'<span class="badge entregue">Entregue</span>':'<span class="badge no-patio">No pátio</span>'}</td><td class="mono">${v.saida&&v.saida.valor?fmtBRL(v.saida.valor):'-'}</td></tr>`).join('')}</tbody></table>`}
-    ${(()=>{const orcs=(typeof orcamentos!=='undefined'?orcamentos:[]).filter(o=>o.cliente_id===c.id);if(!orcs.length)return '';const sl={aguardando:'Aguardando',aprovado:'Aprovado',cancelado:'Cancelado',agendado:'Agendado'};return `<div style="margin-top:14px;"><div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--text3);letter-spacing:.05em;margin-bottom:8px;">Orçamentos (${orcs.length})</div><table class="table"><thead><tr><th>Nº</th><th>Veículo</th><th>Status</th><th></th></tr></thead><tbody>${orcs.map(o=>`<tr><td class="mono" style="color:var(--green-dark);font-weight:700;">Nº${o.numero}</td><td style="font-size:12px;">${esc(o.veiculo_modelo||'—')} ${o.veiculo_placa?'· '+o.veiculo_placa:''}</td><td><span class="badge orc-${esc(o.status)}">${esc(sl[o.status]||o.status)}</span></td><td><button class="btn-sm" onclick="fecharModalId('modal-hist-cliente');showPanel('orcamentos',document.querySelector('[data-panel=\\'orcamentos\\']'));setTimeout(()=>abrirDetalheOrc('${esc(o.id)}'),80)">Abrir</button></td></tr>`).join('')}</tbody></table></div>`;})()} `;
+    ${(()=>{const orcs=(typeof orcamentos!=='undefined'?orcamentos:[]).filter(o=>o.cliente_id===c.id);if(!orcs.length)return '';const sl={aguardando:'Aguardando',aprovado:'Aprovado',cancelado:'Cancelado',agendado:'Agendado'};return `<div style="margin-top:14px;"><div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--text3);letter-spacing:.05em;margin-bottom:8px;">Orçamentos (${orcs.length})</div><table class="table"><thead><tr><th>Nº</th><th>Veículo</th><th>Status</th><th></th></tr></thead><tbody>${orcs.map(o=>`<tr><td class="mono" style="color:var(--green-dark);font-weight:700;">Nº${o.numero}</td><td style="font-size:12px;">${esc(o.veiculo_modelo||'—')} ${o.veiculo_placa?'· '+esc(o.veiculo_placa):''}</td><td><span class="badge orc-${esc(o.status)}">${esc(sl[o.status]||o.status)}</span></td><td><button class="btn-sm" onclick="fecharModalId('modal-hist-cliente');showPanel('orcamentos',document.querySelector('[data-panel=\\'orcamentos\\']'));setTimeout(()=>abrirDetalheOrc('${esc(o.id)}'),80)">Abrir</button></td></tr>`).join('')}</tbody></table></div>`;})()} `;
   document.getElementById('modal-hist-cliente').classList.add('show');
 }
 
@@ -5362,7 +5362,7 @@ function enviarSatisfacao(){
 
 function atualizarSatisfacao(){
   const sel=document.getElementById('sat-veiculo');
-  sel.innerHTML=veiculos.filter(v=>v.saida&&v.telefone).map(v=>`<option value="${v.id}">${v.placa} — ${esc(v.cliente)}</option>`).join('');
+  sel.innerHTML=veiculos.filter(v=>v.saida&&v.telefone).map(v=>`<option value="${v.id}">${esc(v.placa)} — ${esc(v.cliente)}</option>`).join('');
   const el=document.getElementById('satisfacoes-lista');
   if(!satisf.length){el.innerHTML='<div class="empty">Nenhuma avaliação registrada.</div>';return;}
   const media=satisf.reduce((s,x)=>s+x.nota,0)/satisf.length;
@@ -5401,7 +5401,7 @@ function salvarSatisfacao(){
 function atualizarOrcWpp(){
   const sel=document.getElementById('orc-wpp-veiculo');
   sel.innerHTML='<option value="">— Selecione um veículo —</option>'+
-    veiculos.filter(v=>v.orcamento&&!v.saida).map(v=>`<option value="${v.id}">${v.placa} — ${esc(v.cliente)} — ${fmtBRL(v.orcamento)}</option>`).join('');
+    veiculos.filter(v=>v.orcamento&&!v.saida).map(v=>`<option value="${v.id}">${esc(v.placa)} — ${esc(v.cliente)} — ${fmtBRL(v.orcamento)}</option>`).join('');
   previewOrcWpp();
 }
 function previewOrcWpp(){
@@ -6984,7 +6984,7 @@ sbVerificarSessao().then(sessao => {
         <div class="orc-list-num">Nº${o.numero}</div>
         <div class="orc-list-info">
           <div class="orc-list-cliente">${esc(cli?cli.nome:(o.veiculo_modelo||'Sem cliente'))}</div>
-          <div class="orc-list-sub">${esc(o.veiculo_modelo||'—')} ${o.veiculo_placa?'· '+o.veiculo_placa:''} · ${new Date(o.criado_em).toLocaleDateString('pt-BR')}</div>
+          <div class="orc-list-sub">${esc(o.veiculo_modelo||'—')} ${o.veiculo_placa?'· '+esc(o.veiculo_placa):''} · ${new Date(o.criado_em).toLocaleDateString('pt-BR')}</div>
         </div>
         <span class="badge orc-${esc(o.status)}">${esc(statusLabel)}</span>
       </div>`;
@@ -7054,7 +7054,7 @@ sbVerificarSessao().then(sessao => {
     const o=currentOrc; const el=document.getElementById('orc-veiculo-resumo'); if(!el) return;
     const tipo=TIPOS_VEICULO.find(t=>t.id===(o.tipo_veiculo||'sedan'));
     el.innerHTML=`<div style="background:var(--surface2);padding:8px 12px;border-radius:var(--radius);border:1px solid var(--border);"><svg viewBox="0 0 24 24" fill="var(--text2)" style="width:36px;height:36px;">${tipo?tipo.svg:''}</svg></div>
-      <div><div style="font-size:14px;font-weight:600;">${esc(o.veiculo_modelo||'Sem modelo')}</div><div style="font-size:12px;color:var(--text3);">${o.veiculo_ano||'—'} · ${o.veiculo_placa||'Sem placa'}</div></div>
+      <div><div style="font-size:14px;font-weight:600;">${esc(o.veiculo_modelo||'Sem modelo')}</div><div style="font-size:12px;color:var(--text3);">${o.veiculo_ano||'—'} · ${esc(o.veiculo_placa||'Sem placa')}</div></div>
       ${o.veiculo_km?`<div style="font-size:12px;color:var(--text3);">Km: ${Number(o.veiculo_km).toLocaleString('pt-BR')}</div>`:''}`;
   }
 
