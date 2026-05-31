@@ -212,6 +212,23 @@ async function carregarTudo() {
     console.warn('[materiais_os] tabela ainda não criada — rode supabase/migrations/melhorias-2026-05.sql');
     DB.materiaisOs = [];
   }
+  // planejamento (blob + tarefas) — opcional: tabela pode não existir ainda
+  try {
+    const [pl, tarefas] = await Promise.all([
+      handle(db.from('planejamento').select('dados').eq('workspace_id', wid).maybeSingle()),
+      handle(db.from('planejamento_tarefas').select('*').eq('workspace_id', wid)),
+    ]);
+    const d = (pl && pl.dados) || {};
+    planNotas     = d.notas    || {};
+    planMetaFat   = d.metaFat  || {};
+    planMetasDias = d.metasDias|| {};
+    planMetaPad   = d.metaPad  || {seg:3,ter:3,qua:3,qui:3,sex:3,sab:2,dom:0};
+    planCfg       = d.cfg      || {incluirSabado:true,incluirDomingo:false};
+    planTarefas   = (tarefas || []).map(_tarefaParaUi);
+  } catch (e) {
+    console.warn('[planejamento] tabela ainda não criada — rode supabase/migrations/20260531_planejamento.sql');
+  }
+  await _migrarPlanejamentoLocal();
 }
 
 // ─── MAPPERS UI ↔ DB (veiculos) ───────────────────────────────
@@ -442,7 +459,7 @@ function sbInscreverRealtime(onUpdate) {
   const wid = wsId();
   // Evita canais duplicados em reconexões / re-login.
   sbDesinscreverRealtime();
-  ['veiculos','pagamentos','estoque','agenda','fila','notas','estoque_movimentacoes','materiais_os','clientes','parcelas','lancamentos'].forEach(tabela => {
+  ['veiculos','pagamentos','estoque','agenda','fila','notas','estoque_movimentacoes','materiais_os','clientes','parcelas','lancamentos','planejamento_tarefas'].forEach(tabela => {
     const ch = db.channel('realtime:'+tabela+':'+wid)
       .on('postgres_changes', { event: '*', schema: 'public', table: tabela, filter: 'workspace_id=eq.'+wid },
         payload => {
@@ -2605,6 +2622,13 @@ function _onRealtime(tabela,evento,registro){
   if(tabela==='notas'){}
   if(tabela==='materiais_os'){
     if(document.getElementById('panel-materiais-os')?.classList.contains('active')) renderMateriaisOs();
+  }
+  if(tabela==='planejamento_tarefas'){
+    const reg=registro;
+    if(evento==='INSERT'){ if(reg && !planTarefas.some(t=>t.id===reg.id)) planTarefas.push(_tarefaParaUi(reg)); }
+    else if(evento==='UPDATE'){ const i=planTarefas.findIndex(t=>t.id===reg.id); if(i>=0) planTarefas[i]=_tarefaParaUi(reg); }
+    else if(evento==='DELETE'){ planTarefas=planTarefas.filter(t=>t.id!==reg.id); }
+    if(document.getElementById('panel-planejamento')?.classList.contains('active')) renderPlanejamento();
   }
 }
 
@@ -6373,13 +6397,58 @@ function imprimirFichaMateriais(osId){
 
 /* ---------- TASK 4 — PLANEJAMENTO DA SEMANA ---------- */
 let planSemanaOffset=0;
-let planNotas=JSON.parse(localStorage.getItem('om_plan_notas')||'{}');
-let planTarefas=JSON.parse(localStorage.getItem('om_plan_tarefas')||'[]');
-let planMetaFat=JSON.parse(localStorage.getItem('om_plan_meta_fat')||'{}');
+// Estado do Planejamento (agora persistido no Supabase — ver carregarTudo).
+let planNotas={}, planTarefas=[], planMetaFat={}, planMetasDias={};
+let planMetaPad={seg:3,ter:3,qua:3,qui:3,sex:3,sab:2,dom:0};
+let planCfg={incluirSabado:true,incluirDomingo:false};
 let planFiltroTarefas='todas';
-function _savePlanNotas(){localStorage.setItem('om_plan_notas',JSON.stringify(planNotas));}
-function _savePlanTarefas(){localStorage.setItem('om_plan_tarefas',JSON.stringify(planTarefas));}
-function _savePlanMetaFat(){localStorage.setItem('om_plan_meta_fat',JSON.stringify(planMetaFat));}
+
+// Blob (notas/metas/config): upsert único debounced em public.planejamento.
+async function _sbSalvarPlanBlob(){
+  if(!DB.session) return;
+  const dados={notas:planNotas,metaFat:planMetaFat,metasDias:planMetasDias,metaPad:planMetaPad,cfg:planCfg};
+  await handle(db.from('planejamento').upsert({workspace_id:wsId(),dados,atualizado_em:new Date().toISOString()}));
+}
+const _savePlanBlob=debounce(()=>{ _sbSalvarPlanBlob().catch(e=>toast('Erro ao salvar planejamento: '+(e.friendlyMessage||e.message),'error')); },500);
+function _savePlanNotas(){_savePlanBlob();}
+function _savePlanMetaFat(){_savePlanBlob();}
+
+// Tarefas → tabela public.planejamento_tarefas (UI usa texto/pri/cat/obs/semKey/feito/feitoEm).
+function _tarefaParaUi(r){ const m=r.meta||{}; return {id:r.id,texto:r.titulo,pri:m.pri||'normal',cat:m.cat||'operacional',obs:m.obs||'',semKey:r.sem_key,feito:!!r.feito,feitoEm:r.feito_em||null}; }
+function _tarefaParaDb(t){ return {workspace_id:wsId(),sem_key:t.semKey,titulo:t.texto,feito:!!t.feito,feito_em:t.feitoEm||null,meta:{pri:t.pri,cat:t.cat,obs:t.obs}}; }
+
+// Importador único e não-destrutivo dos dados legados de localStorage (om_plan_*).
+// Roda no carregarTudo; o Supabase tem prioridade no merge; mantém o localStorage como backup.
+async function _migrarPlanejamentoLocal(){
+  try{
+    if(localStorage.getItem('om_plan_migrado')) return;
+    const lsNotas    =JSON.parse(localStorage.getItem('om_plan_notas')||'{}');
+    const lsTarefas  =JSON.parse(localStorage.getItem('om_plan_tarefas')||'[]');
+    const lsMetaFat  =JSON.parse(localStorage.getItem('om_plan_meta_fat')||'{}');
+    const lsMetasDias=JSON.parse(localStorage.getItem('om_metas_dias')||'{}');
+    const lsMetaPad  =JSON.parse(localStorage.getItem('om_meta_padrao')||'null');
+    const lsCfg      =JSON.parse(localStorage.getItem('om_plan_config')||'null');
+    const temBlob=Object.keys(lsNotas).length||Object.keys(lsMetaFat).length||Object.keys(lsMetasDias).length||lsMetaPad||lsCfg;
+    const temTarefas=Array.isArray(lsTarefas)&&lsTarefas.length;
+    if(!temBlob&&!temTarefas){ localStorage.setItem('om_plan_migrado','1'); return; }
+    planNotas={...lsNotas,...planNotas};
+    planMetaFat={...lsMetaFat,...planMetaFat};
+    planMetasDias={...lsMetasDias,...planMetasDias};
+    if(lsMetaPad && Object.keys(planMetaPad||{}).length===0) planMetaPad=lsMetaPad;
+    if(lsCfg) planCfg={...lsCfg,...planCfg};
+    await _sbSalvarPlanBlob();
+    if(temTarefas){
+      const existentes=new Set(planTarefas.map(t=>(t.semKey||'')+'|'+t.texto));
+      const novas=lsTarefas.filter(t=>t&&t.texto&&!existentes.has((t.semKey||'')+'|'+t.texto));
+      for(const t of novas){
+        const saved=await handle(db.from('planejamento_tarefas').insert(_tarefaParaDb({texto:t.texto,pri:t.pri||'normal',cat:t.cat||'operacional',obs:t.obs||'',semKey:t.semKey||'',feito:!!t.feito,feitoEm:t.feitoEm||null})).select().single());
+        planTarefas.push(_tarefaParaUi(saved));
+      }
+    }
+    localStorage.setItem('om_plan_migrado','1');
+    console.log('[planejamento] dados locais migrados para o Supabase');
+  }catch(e){ console.warn('[planejamento] falha ao migrar dados locais:',e); }
+}
 function _getPlanSemKey(){
   const hoje=new Date();
   const d=new Date(hoje);
@@ -6411,25 +6480,35 @@ function editarPlanTarefa(id){
   document.getElementById('modal-plan-tarefa-title').textContent='Editar tarefa';
   document.getElementById('modal-plan-tarefa').classList.add('show');
 }
-function salvarPlanTarefa(){
+async function salvarPlanTarefa(){
   const id=document.getElementById('pt-id').value;
   const texto=document.getElementById('pt-texto').value.trim();
   if(!texto){toast('Informe a descrição','error');return;}
   const semKey=_getPlanSemKey();
   const dados={texto,pri:document.getElementById('pt-pri').value,cat:document.getElementById('pt-cat').value,obs:document.getElementById('pt-obs').value.trim(),semKey};
-  if(id){const i=planTarefas.findIndex(x=>x.id===id);if(i>=0)planTarefas[i]={...planTarefas[i],...dados};}
-  else planTarefas.push({id:'pt_'+Date.now(),...dados,feito:false,feitoEm:null});
-  _savePlanTarefas();fecharModalId('modal-plan-tarefa');renderPlanejamento();toast('Tarefa salva','success');
+  await safeOp('Erro ao salvar tarefa', async()=>{
+    if(id){
+      const i=planTarefas.findIndex(x=>x.id===id);
+      if(i>=0)planTarefas[i]={...planTarefas[i],...dados};
+      await handle(db.from('planejamento_tarefas').update(_tarefaParaDb({...dados,feito:planTarefas[i]?.feito,feitoEm:planTarefas[i]?.feitoEm})).eq('id',id));
+    } else {
+      const saved=await handle(db.from('planejamento_tarefas').insert(_tarefaParaDb({...dados,feito:false,feitoEm:null})).select().single());
+      planTarefas.push(_tarefaParaUi(saved));
+    }
+    fecharModalId('modal-plan-tarefa');renderPlanejamento();toast('Tarefa salva','success');
+  });
 }
-function togglePlanTarefa(id,feito){
+async function togglePlanTarefa(id,feito){
   const t=planTarefas.find(x=>x.id===id);if(!t)return;
   t.feito=feito;t.feitoEm=feito?new Date().toISOString().slice(0,10):null;
-  _savePlanTarefas();_renderPlanTarefasSec();
+  _renderPlanTarefasSec();
+  await safeOp('Erro ao atualizar tarefa', ()=>handle(db.from('planejamento_tarefas').update({feito:t.feito,feito_em:t.feitoEm}).eq('id',id)));
 }
-function delPlanTarefa(id){
+async function delPlanTarefa(id){
   if(!confirm('Excluir tarefa?'))return;
   planTarefas=planTarefas.filter(t=>t.id!==id);
-  _savePlanTarefas();_renderPlanTarefasSec();toast('Tarefa excluída');
+  _renderPlanTarefasSec();toast('Tarefa excluída');
+  await safeOp('Erro ao excluir tarefa', ()=>handle(db.from('planejamento_tarefas').delete().eq('id',id)));
 }
 function setPlanFiltroTarefas(f,btn){
   planFiltroTarefas=f;
@@ -6475,11 +6554,7 @@ function salvarPlanMetaFat(){
 }
 
 function _planDefaults(){
-  return {
-    metaPad: JSON.parse(localStorage.getItem('om_meta_padrao')||'{"seg":3,"ter":3,"qua":3,"qui":3,"sex":3,"sab":2,"dom":0}'),
-    metasDias: JSON.parse(localStorage.getItem('om_metas_dias')||'{}'),
-    cfg: JSON.parse(localStorage.getItem('om_plan_config')||'{"incluirSabado":true,"incluirDomingo":false}')
-  };
+  return { metaPad: planMetaPad, metasDias: planMetasDias, cfg: planCfg };
 }
 
 function renderPlanejamento(){
@@ -6624,9 +6699,8 @@ function editarMetaDia(iso, metaAtual){
   if(v===null) return;
   const n=parseInt(v);
   if(isNaN(n)||n<0){ toast('Valor inválido','error'); return; }
-  const metas=JSON.parse(localStorage.getItem('om_metas_dias')||'{}');
-  metas[iso]=n;
-  localStorage.setItem('om_metas_dias', JSON.stringify(metas));
+  planMetasDias[iso]=n;
+  _savePlanBlob();
   renderPlanejamento();
   toast('Meta atualizada','success');
 }
@@ -6659,8 +6733,9 @@ function salvarPlanConfig(){
     incluirSabado: document.getElementById('plan-incluir-sab').checked,
     incluirDomingo: document.getElementById('plan-incluir-dom').checked
   };
-  localStorage.setItem('om_meta_padrao', JSON.stringify(metaPad));
-  localStorage.setItem('om_plan_config', JSON.stringify(cfg));
+  planMetaPad=metaPad;
+  planCfg=cfg;
+  _savePlanBlob();
   fecharModalId('modal-plan-config');
   renderPlanejamento();
   toast('Configuração salva','success');
@@ -6668,8 +6743,9 @@ function salvarPlanConfig(){
 
 function restaurarPlanPadrao(){
   if(!confirm('Restaurar metas padrão?')) return;
-  localStorage.removeItem('om_meta_padrao');
-  localStorage.removeItem('om_plan_config');
+  planMetaPad={seg:3,ter:3,qua:3,qui:3,sex:3,sab:2,dom:0};
+  planCfg={incluirSabado:true,incluirDomingo:false};
+  _savePlanBlob();
   abrirPlanConfig();
   toast('Padrão restaurado','success');
 }
