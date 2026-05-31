@@ -7003,10 +7003,6 @@ sbVerificarSessao().then(sessao => {
     }
   };
 
-  function gerarNumero(){
-    return orcamentos.length === 0 ? 1000001 : Math.max(...orcamentos.map(o=>o.numero||0)) + 1;
-  }
-
   window.abrirDetalheOrc = async function(id){
     currentOrc = orcamentos.find(o=>o.id===id); if(!currentOrc) return;
     try { orcServicos = (await handle(db.from('orcamento_servicos').select('*').eq('orcamento_id',id).order('ordem'))) || []; } catch(e){ orcServicos=[]; }
