@@ -179,7 +179,17 @@ async function carregarTudo() {
     handle(db.from('config').select('*').eq('workspace_id', wid).maybeSingle()),
     handle(db.from('profiles').select('*').eq('workspace_id', wid)),
   ]);
-  DB.colabs = colabs; DB.clientes = clientes; DB.veiculos = veiculos.map(veiculoDoDb);
+  // Remuneração só é carregada (e visível) para dono/socio; demais roles recebem colab sem os números.
+  if (['dono','socio'].includes(DB.session?.role)) {
+    let remun = [];
+    try { remun = await handle(db.from('colaboradores_remuneracao').select('*').eq('workspace_id', wid)); }
+    catch (e) { console.warn('[remuneracao] tabela ainda não criada — rode 20260530_rls-por-role.sql'); remun = []; }
+    const rmap = {}; remun.forEach(r => { rmap[r.colaborador_id] = r; });
+    DB.colabs = colabs.map(c => ({ ...c, ...(rmap[c.id] || {}) }));
+  } else {
+    DB.colabs = colabs;
+  }
+  DB.clientes = clientes; DB.veiculos = veiculos.map(veiculoDoDb);
   DB.pagamentos = pagamentos; DB.agenda = agenda;
   DB.estoque = estoque; DB.auditoria = auditoria; DB.fila = fila;
   DB.parcelas = parcelas; DB.notas = notas; DB.satisf = satisf;
@@ -332,10 +342,27 @@ async function sbExcluirCliente(id) {
   await handle(db.from('clientes').delete().eq('id', id));
 }
 
+// Campos sensíveis vivem em colaboradores_remuneracao (RLS só dono/socio).
+const COLAB_SENSIVEIS = ['salario','comissao','cpf','banco','tipo_conta','agencia','conta_bancaria','pix_tipo'];
 async function sbSalvarColab(colab) {
-  const row = { ...colab, workspace_id: wsId() };
-  if (row.id && !_isTmpId(row.id)) return handle(db.from('colaboradores').update(row).eq('id', row.id).select().single());
-  delete row.id; return handle(db.from('colaboradores').insert(row).select().single());
+  const sens = {}, base = { workspace_id: wsId() };
+  for (const [k, v] of Object.entries(colab)) {
+    if (COLAB_SENSIVEIS.includes(k)) sens[k] = v; else base[k] = v;
+  }
+  let saved;
+  if (base.id && !_isTmpId(base.id)) {
+    saved = await handle(db.from('colaboradores').update(base).eq('id', base.id).select().single());
+  } else {
+    delete base.id;
+    saved = await handle(db.from('colaboradores').insert(base).select().single());
+  }
+  // Remuneração: só ADMIN tem permissão (RLS). Gerente salva só os dados base.
+  const podeFin = ['dono','socio'].includes(DB.session?.role);
+  if (podeFin && Object.keys(sens).length) {
+    await handle(db.from('colaboradores_remuneracao')
+      .upsert({ colaborador_id: saved.id, workspace_id: wsId(), ...sens }, { onConflict: 'colaborador_id' }));
+  }
+  return { ...saved, ...(podeFin ? sens : {}) };
 }
 async function sbExcluirColab(id) {
   if (_isTmpId(id)) return;
@@ -406,26 +433,41 @@ async function sbAlterarRoleUsuario(userId, novoRole) {
   await handle(db.from('profiles').update({ role: novoRole }).eq('id', userId).eq('workspace_id', wsId()));
 }
 
+let _canaisRealtime = [];
+function sbDesinscreverRealtime() {
+  _canaisRealtime.forEach(ch => { try { db.removeChannel(ch); } catch (e) {} });
+  _canaisRealtime = [];
+}
 function sbInscreverRealtime(onUpdate) {
   const wid = wsId();
-  ['veiculos','pagamentos','estoque','agenda','fila','notas','estoque_movimentacoes','materiais_os'].forEach(tabela => {
-    db.channel('realtime:'+tabela+':'+wid)
+  // Evita canais duplicados em reconexões / re-login.
+  sbDesinscreverRealtime();
+  ['veiculos','pagamentos','estoque','agenda','fila','notas','estoque_movimentacoes','materiais_os','clientes','parcelas','lancamentos'].forEach(tabela => {
+    const ch = db.channel('realtime:'+tabela+':'+wid)
       .on('postgres_changes', { event: '*', schema: 'public', table: tabela, filter: 'workspace_id=eq.'+wid },
         payload => {
           aplicarMudancaLocal(tabela, payload.eventType, payload.new || payload.old);
           onUpdate(tabela, payload.eventType, payload.new || payload.old);
         })
       .subscribe();
+    _canaisRealtime.push(ch);
   });
 }
 
 function aplicarMudancaLocal(tabela, evento, registro) {
-  const chave = { veiculos:'veiculos', pagamentos:'pagamentos', estoque:'estoque', agenda:'agenda', fila:'fila', notas:'notas', materiais_os:'materiaisOs' }[tabela];
+  const chave = { veiculos:'veiculos', pagamentos:'pagamentos', estoque:'estoque', agenda:'agenda', fila:'fila', notas:'notas', materiais_os:'materiaisOs', clientes:'clientes', parcelas:'parcelas', lancamentos:'lancamentos' }[tabela];
   if (!chave) return;
   // veiculos vem do Postgres em snake_case — passar pelo mapper p/ a UI ler dataEntrada, kanbanStatus, etc.
   const norm = (tabela === 'veiculos' && registro && registro.id) ? veiculoDoDb(registro) : registro;
   if (evento === 'INSERT') DB[chave] = [norm, ...DB[chave]];
-  else if (evento === 'UPDATE') DB[chave] = DB[chave].map(r => r.id === norm.id ? { ...r, ...norm } : r);
+  else if (evento === 'UPDATE') DB[chave] = DB[chave].map(r => {
+    if (r.id !== norm.id) return r;
+    const merged = { ...r, ...norm };
+    // O payload do Realtime não traz a relação orcamento_itens — preserva
+    // os itens já carregados em memória para não zerá-los na tela dos outros.
+    if (tabela === 'veiculos' && !registro.orcamento_itens) merged.itens = r.itens || [];
+    return merged;
+  });
   else if (evento === 'DELETE') DB[chave] = DB[chave].filter(r => r.id !== registro.id);
 }
 
@@ -2556,6 +2598,10 @@ function _onRealtime(tabela,evento,registro){
     if(histEl && histEl.style.display!=='none') renderHistEstoque();
   }
   if(tabela==='fila')atualizarFilaEspera();
+  if(tabela==='pagamentos'){atualizarDashboard();}
+  if(tabela==='clientes'){atualizarClientes();atualizarBadges();}
+  if(tabela==='parcelas'){atualizarDashboard();}
+  if(tabela==='lancamentos'){atualizarDashboard();}
   if(tabela==='notas'){}
   if(tabela==='materiais_os'){
     if(document.getElementById('panel-materiais-os')?.classList.contains('active')) renderMateriaisOs();
@@ -4031,7 +4077,8 @@ async function salvarColab(){
   const nome=document.getElementById('colab-nome').value.trim();
   const salario=parseFloat(document.getElementById('colab-salario').value);
   if(!nome){toast('Informe o nome','error');return;}
-  if(!salario||salario<0){toast('Informe o salário','error');return;}
+  // Salário é obrigatório só para quem tem acesso financeiro (gerente nem vê o campo).
+  if(hasRole('dono','socio') && (!salario||salario<0)){toast('Informe o salário','error');return;}
 
   const cpf=document.getElementById('colab-cpf').value.trim();
   const cpfLimpo=cpf.replace(/\D/g,'');
@@ -6870,8 +6917,8 @@ sbVerificarSessao().then(sessao => {
 
   window.novoOrcamento = async function(){
     try {
-      const numero = gerarNumero();
-      const novo = await handle(db.from('orcamentos').insert({workspace_id:wsId(),numero,status:'aguardando',tipo_veiculo:'sedan'}).select().single());
+      // numero é atribuído atomicamente pelo trigger set_orcamento_numero no banco
+      const novo = await handle(db.from('orcamentos').insert({workspace_id:wsId(),status:'aguardando',tipo_veiculo:'sedan'}).select().single());
       if(!novo){ toast('Erro ao criar orçamento','error'); return; }
       novo._servicos = []; orcamentos.unshift(novo);
       abrirDetalheOrc(novo.id);
@@ -7127,8 +7174,7 @@ sbVerificarSessao().then(sessao => {
 
   window.novoOrcamentoParaCliente = async function(clienteId, clienteNome){
     try {
-      const numero=gerarNumero();
-      const novo=await handle(db.from('orcamentos').insert({workspace_id:wsId(),numero,status:'aguardando',tipo_veiculo:'sedan',cliente_id:clienteId||null}).select().single());
+      const novo=await handle(db.from('orcamentos').insert({workspace_id:wsId(),status:'aguardando',tipo_veiculo:'sedan',cliente_id:clienteId||null}).select().single());
       if(!novo){toast('Erro ao criar orçamento','error');return;}
       novo._servicos=[]; orcamentos.unshift(novo);
       showPanel('orcamentos',document.querySelector('[data-panel="orcamentos"]'));
@@ -7141,8 +7187,7 @@ sbVerificarSessao().then(sessao => {
     try {
       const v=(typeof veiculos!=='undefined'?veiculos:[]).find(x=>x.id===veiculoId);
       const cli=v&&(DB.clientes||[]).find(c=>c.nome===v.cliente||c.telefone===v.telefone);
-      const numero=gerarNumero();
-      const novo=await handle(db.from('orcamentos').insert({workspace_id:wsId(),numero,status:'aguardando',tipo_veiculo:'sedan',cliente_id:cli?cli.id:null,veiculo_modelo:v?v.modelo||null:null,veiculo_placa:v?v.placa||null:null,veiculo_ano:v?v.ano||null:null,veiculo_cor:v?v.cor||null:null,veiculo_km:v&&v.km?parseFloat(v.km):null}).select().single());
+      const novo=await handle(db.from('orcamentos').insert({workspace_id:wsId(),status:'aguardando',tipo_veiculo:'sedan',cliente_id:cli?cli.id:null,veiculo_modelo:v?v.modelo||null:null,veiculo_placa:v?v.placa||null:null,veiculo_ano:v?v.ano||null:null,veiculo_cor:v?v.cor||null:null,veiculo_km:v&&v.km?parseFloat(v.km):null}).select().single());
       if(!novo){toast('Erro ao criar orçamento','error');return;}
       novo._servicos=[]; orcamentos.unshift(novo);
       showPanel('orcamentos',document.querySelector('[data-panel="orcamentos"]'));

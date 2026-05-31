@@ -1,0 +1,8 @@
+# Supabase CLI — estado local/temporário (não versionar)
+supabase/.temp/
+supabase/.branches/
+.env
+.env.local
+
+# OS
+.DS_Store
