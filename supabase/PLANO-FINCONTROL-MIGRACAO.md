@@ -74,7 +74,24 @@ Detalhe original do plano:
 - UI nativa no `index.html` (telas simples de CRUD + alertas de vencimento).
 - Importar os 22 boletos, 4 contas, 4 centros.
 
-### Fase 3 — Recorrências + categorias + regras
+### Fase 3 — Recorrências + categorias + regras — ✅ IMPLEMENTADA
+Entregue: migration `20260531_fincontrol-fase3.sql` (tabela `fincontrol_legado`,
+RLS financeiro). Importador `importarFinControlFase3()`: mescla `fc_cats` em
+`categorias_financeiras` (consumo real) e **preserva** recorrências/regras/pessoas/
+vendedores em `fincontrol_legado` (baixo volume, sem motor nativo — preservação para
+não perder ao aposentar o iframe). Visualizador read-only no painel Contas.
+
+### Fase 4 — Aposentar o iframe — ✅ IMPLEMENTADA
+Entregue: removido o `panel-fincontrol`/iframe e o código morto
+(`abrirFincontrol`/`fcRecarregarIframe`/`fcAbrirNovaAba`). Menu "FinControl Pro"
+**redireciona** para o Fluxo de Caixa (decisão D2). As ferramentas de importação e o
+link "Abrir FinControl legado" foram centralizados no card "Migração do FinControl"
+em Contas a Pagar. O card do dashboard agora informa a integração concluída.
+> O arquivo `fincontrol-v3.html` foi **mantido** (acessível via "Abrir FinControl
+> legado") como rede de segurança/consulta; pode ser removido do repo no futuro,
+> após período de carência.
+
+### (original) Fase 3 — Recorrências + categorias + regras
 - `recorrencias` + merge de `fc_cats` em `categorias_financeiras` + (opcional)
   `regras_categoria` para auto-categorização.
 
