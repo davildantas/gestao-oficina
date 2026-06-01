@@ -41,7 +41,18 @@ Isso é o que torna isto um projeto em fases, não um commit.
 - Remover o double-write (`fcLancar`) e corrigir o rótulo enganoso "Conectado ao
   Supabase" no card do FinControl.
 
-### Fase 1 — Lançamentos unificados (núcleo)
+### Fase 1 — Lançamentos unificados (núcleo) — ✅ IMPLEMENTADA
+Entregue: migration `20260531_fincontrol-fase1.sql` (estende `lancamentos` com
+forma/centro/origem/fc_id/meta + índice único idempotente); botão "Importar
+lançamentos p/ nuvem" no painel FinControl (`importarFinControlLancamentos`,
+dedupe por fc_id, não-destrutivo); nova aba **"☁️ Lançamentos (nuvem)"** no Fluxo
+de Caixa exibindo `DB.lancamentos` com totais.
+> ⚠️ Limitação conhecida: os **cards do topo** do Fluxo de Caixa ("Entradas no mês"
+> etc.) ainda derivam do modelo antigo (veiculos.saida + pagamentos), não de
+> `lancamentos`. Unificar as métricas para ler `lancamentos` fica para uma fase
+> seguinte (refactor maior). A aba nova já mostra o ledger unificado com seus totais.
+
+Detalhe original do plano:
 - Estender `lancamentos` com: `forma text`, `centro text` (ou FK), `conciliado bool`,
   e um `origem text` (p/ rastrear 'oficina' vs 'fincontrol' e dedupe).
 - Importador: 520 `fc_lanc` → `lancamentos`, **deduplicando** contra os lançamentos
@@ -49,12 +60,38 @@ Isso é o que torna isto um projeto em fases, não um commit.
 - Ajustar o Fluxo de Caixa nativo para exibir/filtrar tudo (já lê `lancamentos`).
 - Aposentar `fc_lanc`.
 
-### Fase 2 — Contas a pagar/receber + bancárias + centros
+### Fase 2 — Contas a pagar/receber + bancárias + centros — ✅ IMPLEMENTADA
+Entregue: migration `20260531_fincontrol-fase2.sql` (tabelas `contas_fin`,
+`contas_bancarias`, `centros_custo`, RLS financeiro, realtime de `contas_fin`);
+novo painel **"Contas a Pagar"** (nav Financeiro, dono/socio) com métricas
+(a pagar/receber em aberto, vencendo em 7d, vencidas), lista de boletos com
+✓ Parcela / editar / excluir, CRUD de contas bancárias e centros de custo;
+importador `importarFinControlContas()` (boletos+bancárias+centros, dedupe por
+fc_id/nome, não-destrutivo); badge de contas vencidas no menu; realtime.
+
+Detalhe original do plano:
 - Tabelas `contas_fin`, `contas_bancarias`, `centros_custo` (RLS por workspace).
 - UI nativa no `index.html` (telas simples de CRUD + alertas de vencimento).
 - Importar os 22 boletos, 4 contas, 4 centros.
 
-### Fase 3 — Recorrências + categorias + regras
+### Fase 3 — Recorrências + categorias + regras — ✅ IMPLEMENTADA
+Entregue: migration `20260531_fincontrol-fase3.sql` (tabela `fincontrol_legado`,
+RLS financeiro). Importador `importarFinControlFase3()`: mescla `fc_cats` em
+`categorias_financeiras` (consumo real) e **preserva** recorrências/regras/pessoas/
+vendedores em `fincontrol_legado` (baixo volume, sem motor nativo — preservação para
+não perder ao aposentar o iframe). Visualizador read-only no painel Contas.
+
+### Fase 4 — Aposentar o iframe — ✅ IMPLEMENTADA
+Entregue: removido o `panel-fincontrol`/iframe e o código morto
+(`abrirFincontrol`/`fcRecarregarIframe`/`fcAbrirNovaAba`). Menu "FinControl Pro"
+**redireciona** para o Fluxo de Caixa (decisão D2). As ferramentas de importação e o
+link "Abrir FinControl legado" foram centralizados no card "Migração do FinControl"
+em Contas a Pagar. O card do dashboard agora informa a integração concluída.
+> O arquivo `fincontrol-v3.html` foi **mantido** (acessível via "Abrir FinControl
+> legado") como rede de segurança/consulta; pode ser removido do repo no futuro,
+> após período de carência.
+
+### (original) Fase 3 — Recorrências + categorias + regras
 - `recorrencias` + merge de `fc_cats` em `categorias_financeiras` + (opcional)
   `regras_categoria` para auto-categorização.
 
