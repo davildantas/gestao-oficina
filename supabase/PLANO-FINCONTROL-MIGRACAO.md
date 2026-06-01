@@ -60,7 +60,16 @@ Detalhe original do plano:
 - Ajustar o Fluxo de Caixa nativo para exibir/filtrar tudo (já lê `lancamentos`).
 - Aposentar `fc_lanc`.
 
-### Fase 2 — Contas a pagar/receber + bancárias + centros
+### Fase 2 — Contas a pagar/receber + bancárias + centros — ✅ IMPLEMENTADA
+Entregue: migration `20260531_fincontrol-fase2.sql` (tabelas `contas_fin`,
+`contas_bancarias`, `centros_custo`, RLS financeiro, realtime de `contas_fin`);
+novo painel **"Contas a Pagar"** (nav Financeiro, dono/socio) com métricas
+(a pagar/receber em aberto, vencendo em 7d, vencidas), lista de boletos com
+✓ Parcela / editar / excluir, CRUD de contas bancárias e centros de custo;
+importador `importarFinControlContas()` (boletos+bancárias+centros, dedupe por
+fc_id/nome, não-destrutivo); badge de contas vencidas no menu; realtime.
+
+Detalhe original do plano:
 - Tabelas `contas_fin`, `contas_bancarias`, `centros_custo` (RLS por workspace).
 - UI nativa no `index.html` (telas simples de CRUD + alertas de vencimento).
 - Importar os 22 boletos, 4 contas, 4 centros.
