@@ -25,6 +25,7 @@ let DB = {
   metas: {}, fila: [], fotos: {}, parcelas: [], notas: [], satisf: [],
   lancamentos: [], categorias: { entrada: [], saida: [] },
   materiaisOs: [],
+  contasFin: [], contasBanc: [], centros: [], legado: [],
 };
 
 function wsId() {
@@ -229,6 +230,23 @@ async function carregarTudo() {
     console.warn('[planejamento] tabela ainda não criada — rode supabase/migrations/20260531_planejamento.sql');
   }
   await _migrarPlanejamentoLocal();
+  // FinControl Fase 2 — contas/centros (só financeiro; tabelas podem não existir ainda)
+  if (['dono','socio'].includes(DB.session?.role)) {
+    try {
+      const [cf, cb, ce] = await Promise.all([
+        handle(db.from('contas_fin').select('*').eq('workspace_id', wid).order('vencimento')),
+        handle(db.from('contas_bancarias').select('*').eq('workspace_id', wid)),
+        handle(db.from('centros_custo').select('*').eq('workspace_id', wid).order('nome')),
+      ]);
+      DB.contasFin = cf || []; DB.contasBanc = cb || []; DB.centros = (ce || []).map(c => c.nome);
+    } catch (e) {
+      console.warn('[contas_fin] tabelas ainda não criadas — rode 20260531_fincontrol-fase2.sql');
+      DB.contasFin = []; DB.contasBanc = []; DB.centros = [];
+    }
+    try {
+      DB.legado = await handle(db.from('fincontrol_legado').select('*').eq('workspace_id', wid));
+    } catch (e) { DB.legado = []; }
+  }
 }
 
 // ─── MAPPERS UI ↔ DB (veiculos) ───────────────────────────────
@@ -459,7 +477,7 @@ function sbInscreverRealtime(onUpdate) {
   const wid = wsId();
   // Evita canais duplicados em reconexões / re-login.
   sbDesinscreverRealtime();
-  ['veiculos','pagamentos','estoque','agenda','fila','notas','estoque_movimentacoes','materiais_os','clientes','parcelas','lancamentos','planejamento_tarefas'].forEach(tabela => {
+  ['veiculos','pagamentos','estoque','agenda','fila','notas','estoque_movimentacoes','materiais_os','clientes','parcelas','lancamentos','planejamento_tarefas','contas_fin'].forEach(tabela => {
     const ch = db.channel('realtime:'+tabela+':'+wid)
       .on('postgres_changes', { event: '*', schema: 'public', table: tabela, filter: 'workspace_id=eq.'+wid },
         payload => {
@@ -472,7 +490,7 @@ function sbInscreverRealtime(onUpdate) {
 }
 
 function aplicarMudancaLocal(tabela, evento, registro) {
-  const chave = { veiculos:'veiculos', pagamentos:'pagamentos', estoque:'estoque', agenda:'agenda', fila:'fila', notas:'notas', materiais_os:'materiaisOs', clientes:'clientes', parcelas:'parcelas', lancamentos:'lancamentos' }[tabela];
+  const chave = { veiculos:'veiculos', pagamentos:'pagamentos', estoque:'estoque', agenda:'agenda', fila:'fila', notas:'notas', materiais_os:'materiaisOs', clientes:'clientes', parcelas:'parcelas', lancamentos:'lancamentos', contas_fin:'contasFin' }[tabela];
   if (!chave) return;
   // veiculos vem do Postgres em snake_case — passar pelo mapper p/ a UI ler dataEntrada, kanbanStatus, etc.
   const norm = (tabela === 'veiculos' && registro && registro.id) ? veiculoDoDb(registro) : registro;
@@ -970,6 +988,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
       <button class="nav-item" data-panel="relatorio" data-role="dono,socio" onclick="showPanel('relatorio',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>Relatório</button>
       <button class="nav-item" data-panel="relatorios-adv" data-role="dono,socio" onclick="showPanel('relatorios-adv',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M11 2v20c-5.07-.5-9-4.79-9-10s3.93-9.5 9-10zm2.03 0v8.99H22c-.47-4.74-4.24-8.52-8.97-8.99zm0 11.01V22c4.74-.47 8.5-4.25 8.97-8.99h-8.97z"/></svg>Rel. Avançados</button>
       <div class="nav-section" data-role="dono,socio">Financeiro</div>
+      <button class="nav-item" data-panel="contas" data-role="dono,socio" onclick="showPanel('contas',this)"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z"/></svg>Contas a Pagar<span class="nav-badge" id="badge-contas" style="display:none;"></span></button>
       <button class="nav-item" data-panel="fluxo-caixa" data-role="dono,socio" onclick="showPanel('fluxo-caixa',this)"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>Fluxo de Caixa</button>
       <div class="nav-section" data-role="dono,socio,gerente,assistente">Operacional</div>
       <button class="nav-item" data-panel="fila-espera" data-role="dono,socio,gerente,assistente" onclick="showPanel('fila-espera',this)"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>Fila de Espera<span class="nav-badge" id="badge-fila" style="display:none;"></span></button>
@@ -979,7 +998,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
       <button class="nav-item" data-panel="materiais-os" data-role="dono,socio,gerente,assistente" onclick="showPanel('materiais-os',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-5 14H4v-4h11v4zm0-5H4V9h11v4zm5 5h-4V9h4v9z"/></svg>Materiais por OS</button>
       <button class="nav-item" data-panel="planejamento" data-role="dono,socio,gerente,assistente" onclick="showPanel('planejamento',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg>Planejamento</button>
       <div class="nav-section" data-role="dono,socio">FinControl</div>
-      <button class="nav-item" data-panel="fincontrol" data-role="dono,socio" onclick="showPanel('fincontrol',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>FinControl Pro</button>
+      <button class="nav-item" data-panel="fluxo-caixa" data-role="dono,socio" onclick="showPanel('fluxo-caixa',this)" title="O FinControl foi integrado ao Fluxo de Caixa"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>FinControl Pro</button>
       <div class="nav-section" data-role="dono,socio">Sistema</div>
       <button class="nav-item" data-panel="config" data-role="dono,socio" onclick="showPanel('config',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/></svg>Configurações</button>
       <button class="nav-item" data-panel="auditoria" data-role="dono,socio" onclick="showPanel('auditoria',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>Auditoria</button>
@@ -1437,6 +1456,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
           <button class="tab-btn" onclick="setFcTab('salarios',this)">Saídas (salários)</button>
           <button class="tab-btn" onclick="setFcTab('notas',this)">Notas / recibos emitidos</button>
           <button class="tab-btn" onclick="setFcTab('seguradoras',this)">🏢 Seguradoras</button>
+          <button class="tab-btn" onclick="setFcTab('lancamentos',this)">☁️ Lançamentos (nuvem)</button>
         </div>
         <div id="fc-extrato"></div>
       </div>
@@ -1595,18 +1615,64 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
     <!-- PLANEJAMENTO DA SEMANA -->
     <div id="panel-planejamento" class="panel"></div>
 
-    <!-- FINCONTROL PRO (iframe) -->
-    <div id="panel-fincontrol" class="panel">
+    <!-- CONTAS A PAGAR / RECEBER (FinControl Fase 2) -->
+    <div id="panel-contas" class="panel">
       <div class="page-header">
-        <div><div class="page-title">FinControl Pro</div><div class="page-sub">Sistema financeiro completo — dados em localStorage do navegador</div></div>
+        <div><div class="page-title">Contas a Pagar / Receber</div><div class="page-sub">Boletos, contas bancárias e centros de custo — sincronizado na nuvem</div></div>
         <div style="display:flex;gap:8px">
-          <button class="btn-secondary" onclick="fcAbrirNovaAba()">↗ Abrir em nova aba</button>
-          <button class="btn-secondary" onclick="fcRecarregarIframe()">↻ Recarregar</button>
+          <button class="btn-primary" onclick="abrirModalConta()">+ Nova conta</button>
         </div>
       </div>
-      <div id="fc-banner" class="info-box" style="display:none"></div>
-      <div class="fc-iframe-wrap"><iframe id="fc-iframe" src="about:blank" title="FinControl Pro"></iframe></div>
+      <div class="metrics" style="grid-template-columns:repeat(4,1fr)">
+        <div class="metric-card"><div class="metric-label">A pagar (em aberto)</div><div class="metric-value red" id="contas-m-apagar">R$ 0,00</div><div class="metric-sub" id="contas-m-apagar-sub">—</div></div>
+        <div class="metric-card"><div class="metric-label">A receber (em aberto)</div><div class="metric-value green" id="contas-m-areceber">R$ 0,00</div><div class="metric-sub">—</div></div>
+        <div class="metric-card"><div class="metric-label">Vencendo em 7 dias</div><div class="metric-value orange" id="contas-m-vencendo">0</div><div class="metric-sub">contas</div></div>
+        <div class="metric-card"><div class="metric-label">Vencidas</div><div class="metric-value red" id="contas-m-vencidas">0</div><div class="metric-sub">contas</div></div>
+      </div>
+      <div class="card"><div class="card-title">Boletos / Contas</div><div id="contas-boletos-list"><div class="empty">Nenhuma conta cadastrada</div></div></div>
+      <div class="grid2">
+        <div class="card">
+          <div class="card-title">Contas bancárias</div>
+          <div class="form-row"><div class="form-group"><input type="text" id="cb-banco" placeholder="Banco"></div><div class="form-group"><input type="text" id="cb-tipo" placeholder="Tipo (corrente/poupança)"></div></div>
+          <div class="form-row"><div class="form-group"><input type="number" id="cb-saldo" step="0.01" placeholder="Saldo inicial"></div><div class="form-group"><button class="btn-secondary full" onclick="salvarContaBanc()">+ Adicionar conta</button></div></div>
+          <div id="contas-banc-list"><div class="empty">Nenhuma conta bancária</div></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Centros de custo</div>
+          <div class="form-row"><div class="form-group"><input type="text" id="cc-nome" placeholder="Novo centro de custo" onkeydown="if(event.key==='Enter')salvarCentro()"></div><div class="form-group"><button class="btn-secondary full" onclick="salvarCentro()">+ Adicionar</button></div></div>
+          <div id="contas-centros-list"><div class="empty">Nenhum centro de custo</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Migração do FinControl <span style="font-size:11px;color:var(--text3);font-weight:400">— rode no navegador que tem os dados (seguro repetir)</span></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+          <button class="btn-secondary" id="btn-import-fc" onclick="importarFinControlLancamentos()">⬆ Importar lançamentos</button>
+          <button class="btn-secondary" id="btn-import-contas" onclick="importarFinControlContas()">⬆ Importar contas/boletos</button>
+          <button class="btn-secondary" id="btn-import-fase3" onclick="importarFinControlFase3()">⬆ Importar categorias/recorrências</button>
+          <button class="btn-secondary" onclick="window.open(FC_IFRAME_SRC,'_blank')" title="Abre o FinControl antigo numa aba para consulta/conferência">↗ Abrir FinControl legado</button>
+        </div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Dados legados preservados na nuvem (recorrências, regras, pessoas, vendedores):</div>
+        <div id="contas-legado-list"><div class="empty">Nada preservado ainda</div></div>
+      </div>
     </div>
+
+    <!-- MODAL: conta a pagar/receber -->
+    <div id="modal-conta" class="modal-bg" onclick="fecharModal(event,'modal-conta')">
+      <div class="modal" onclick="event.stopPropagation()">
+        <div class="modal-title" id="modal-conta-title">Nova conta</div>
+        <input type="hidden" id="conta-id">
+        <div class="form-row"><div class="form-group"><label>Descrição *</label><input type="text" id="conta-nome"></div><div class="form-group"><label>Tipo</label><select id="conta-tipo"><option value="pagar">A pagar</option><option value="receber">A receber</option></select></div></div>
+        <div class="form-row triple"><div class="form-group"><label>Valor da parcela *</label><input type="number" id="conta-valor" step="0.01" min="0"></div><div class="form-group"><label>Total parcelas</label><input type="number" id="conta-total" min="1" value="1"></div><div class="form-group"><label>Parcelas pagas</label><input type="number" id="conta-pagas" min="0" value="0"></div></div>
+        <div class="form-row triple"><div class="form-group"><label>Vencimento</label><input type="date" id="conta-venc"></div><div class="form-group"><label>Alerta (dias antes)</label><input type="number" id="conta-alerta" min="0" value="3"></div><div class="form-group"><label>Categoria</label><input type="text" id="conta-cat"></div></div>
+        <div class="form-row single"><div class="form-group"><label>Observação</label><textarea id="conta-obs"></textarea></div></div>
+        <div class="modal-actions"><button class="btn-secondary" onclick="fecharModalId('modal-conta')">Cancelar</button><button class="btn-primary" onclick="salvarConta()">Salvar</button></div>
+      </div>
+    </div>
+
+    <!-- FINCONTROL PRO (iframe) -->
+    <!-- FinControl Pro aposentado (Fase 4): o financeiro migrou para Fluxo de Caixa
+         e Contas a Pagar. O menu "FinControl Pro" redireciona para o Fluxo de Caixa.
+         As ferramentas de importação e o acesso ao app legado ficam em Contas a Pagar. -->
 
     <!-- AUDITORIA -->
     <div id="panel-auditoria" class="panel">
@@ -2623,6 +2689,10 @@ function _onRealtime(tabela,evento,registro){
   if(tabela==='materiais_os'){
     if(document.getElementById('panel-materiais-os')?.classList.contains('active')) renderMateriaisOs();
   }
+  if(tabela==='contas_fin'){
+    if(document.getElementById('panel-contas')?.classList.contains('active')) renderContas();
+    atualizarBadges();
+  }
   if(tabela==='planejamento_tarefas'){
     const reg=registro;
     if(evento==='INSERT'){ if(reg && !planTarefas.some(t=>t.id===reg.id)) planTarefas.push(_tarefaParaUi(reg)); }
@@ -2653,10 +2723,7 @@ function showPanel(id,btn){
   if(id==='mecanicos')renderMecanicosBoard();
   if(id==='materiais-os')renderMateriaisOs();
   if(id==='planejamento')renderPlanejamento();
-  if(id==='fincontrol'){
-    if(!hasRole('dono','socio')){toast('Acesso restrito ao FinControl.','error');showPanel('dashboard',document.querySelector('[data-panel=dashboard]'));return;}
-    abrirFincontrol();
-  }
+  if(id==='contas')renderContas();
 }
 
 function hasRole(...roles){ return roles.includes(session?.role); }
@@ -2686,6 +2753,13 @@ function atualizarBadges(){
   }).length;
   const bC=document.getElementById('badge-clientes');
   if(bC){bC.style.display=inat?'':'none';bC.textContent=inat;}
+  // Contas vencidas/vencendo (só dono/socio têm os dados)
+  const contasAlerta=(DB.contasFin||[]).filter(c=>{
+    if((c.parcelas_pagas||0)>=(c.total_parcelas||1)) return false;
+    return _diasAte(c.vencimento)<=7;
+  }).length;
+  const bCo=document.getElementById('badge-contas');
+  if(bCo){bCo.style.display=contasAlerta?'':'none';bCo.textContent=contasAlerta;}
 }
 
 /* ============ BACKUP SEMANAL ============ */
@@ -4916,7 +4990,26 @@ function atualizarFcExtrato(){
   const {ano,mes}=mesSel('fc-mes');
   const refKey=ano+'-'+pad(mes+1);
   const el=document.getElementById('fc-extrato');
-  if(fcTabAtual==='receitas'){
+  if(fcTabAtual==='lancamentos'){
+    const lst=(DB.lancamentos||[]).filter(l=>(l.data||'').startsWith(refKey)).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+    if(!lst.length){el.innerHTML='<div class="empty">Sem lançamentos no período (use “Importar lançamentos p/ nuvem” no FinControl).</div>';return;}
+    const ent=lst.filter(l=>l.tipo==='entrada').reduce((s,l)=>s+(Number(l.valor)||0),0);
+    const sai=lst.filter(l=>l.tipo==='saida').reduce((s,l)=>s+(Number(l.valor)||0),0);
+    el.innerHTML=`<div style="display:flex;gap:18px;margin-bottom:10px;font-size:13px;">
+        <span>Entradas: <strong class="fc-entrada">${fmtBRL(ent)}</strong></span>
+        <span>Saídas: <strong class="fc-saida">${fmtBRL(sai)}</strong></span>
+        <span>Saldo: <strong>${fmtBRL(ent-sai)}</strong></span>
+        <span style="color:var(--text3)">${lst.length} lançamento(s)</span></div>
+      <table class="table"><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Forma</th><th>Origem</th><th>Valor</th></tr></thead>
+      <tbody>${lst.map(l=>`<tr>
+        <td class="mono" style="font-size:12px;">${fmtData(l.data)}</td>
+        <td style="font-size:12px;">${esc(l.descricao)}${l.centro?` <span class="badge servico">${esc(l.centro)}</span>`:''}</td>
+        <td style="font-size:12px;">${esc(l.categoria||'—')}</td>
+        <td style="font-size:12px;">${esc(l.forma||'—')}</td>
+        <td style="font-size:11px;color:var(--text3);">${esc(l.origem||'—')}</td>
+        <td class="mono ${l.tipo==='entrada'?'fc-entrada':'fc-saida'}">${l.tipo==='saida'?'-':''}${fmtBRL(Number(l.valor)||0)}</td>
+      </tr>`).join('')}</tbody></table>`;
+  } else if(fcTabAtual==='receitas'){
     const saiMes=veiculos.filter(v=>v.saida&&v.saida.data&&v.saida.data.startsWith(refKey)).sort((a,b)=>b.saida.data.localeCompare(a.saida.data));
     if(!saiMes.length){el.innerHTML='<div class="empty">Sem receitas no período</div>';return;}
     el.innerHTML=`<table class="table"><thead><tr><th>Data</th><th>Placa / Cliente</th><th>Serviço</th><th>Forma</th><th>Valor</th></tr></thead>
@@ -6750,8 +6843,7 @@ function restaurarPlanPadrao(){
 }
 
 /* ---------- TASK 1 — INTEGRAÇÃO FINCONTROL PRO ---------- */
-const FC_LANC_KEY = 'fc_lancamentos';
-const FC_IFRAME_SRC = 'fincontrol-v3.html';
+const FC_IFRAME_SRC = 'fincontrol-v3.html';  // app legado (consulta via "Abrir FinControl legado")
 
 // (Fase 0) fcLancar/fcGetResumo removidos: o double-write em localStorage
 // (fc_lancamentos) foi descontinuado. O financeiro real vive no Supabase
@@ -6763,37 +6855,297 @@ function fcAtualizarCardDashboard(){
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
       <div>
-        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">FinControl Pro</div>
-        <div style="font-size:12px;color:var(--text3);margin-top:2px">⚠️ Dados ainda locais neste navegador (não sincronizados na nuvem). Migração em andamento.</div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">FinControl</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:2px">✅ Integrado à nuvem: financeiro em <strong>Fluxo de Caixa</strong> e <strong>Contas a Pagar</strong>.</div>
       </div>
-      <button class="btn-secondary" onclick="showPanel('fincontrol', document.querySelector('[data-panel=fincontrol]'))">Abrir →</button>
+      <button class="btn-secondary" onclick="showPanel('fluxo-caixa', document.querySelector('[data-panel=fluxo-caixa]'))">Abrir →</button>
     </div>`;
 }
 
-let _fcIframeLoaded=false;
-function abrirFincontrol(){
-  const ifr=document.getElementById('fc-iframe');
-  if(!ifr) return;
-  if(!_fcIframeLoaded){
-    ifr.src = FC_IFRAME_SRC;
-    _fcIframeLoaded=true;
-  }
-  const banner=document.getElementById('fc-banner');
-  if(banner){
-    try{
-      const lista=JSON.parse(localStorage.getItem(FC_LANC_KEY)||'[]');
-      if(lista.length){
-        banner.style.display='';
-        banner.textContent=`Dados existentes do FinControl detectados (${lista.length} lançamento(s)) — mantidos intactos.`;
-      } else { banner.style.display='none'; }
-    }catch(e){ banner.style.display='none'; }
-  }
+// (Fase 1) Importa os lançamentos do FinControl (localStorage fc_lanc) para a
+// tabela lancamentos do Supabase. Idempotente (dedupe por fc_id) e não-destrutivo
+// (não apaga o fc_lanc). Deve ser rodado no navegador que tem os dados.
+function _fcLancParaLancamento(l){
+  return {
+    workspace_id: wsId(),
+    tipo:      (l.tipo==='entrada'||l.tipo==='saida') ? l.tipo : 'saida',
+    descricao: (l.desc||'').toString().trim() || 'Sem descrição',
+    valor:     Number(l.valor)||0,
+    categoria: l.cat || null,
+    data:      l.data || hojeISO(),
+    obs:       l.obs || null,
+    forma:     l.forma || null,
+    centro:    l.centro || null,
+    origem:    'fincontrol',
+    fc_id:     String(l.id),
+    meta:      { tags:l.tags||[], favorito:!!l.favorito, vendedorId:l.vendedorId||null, recId:l.recId||null }
+  };
 }
-function fcRecarregarIframe(){
-  const ifr=document.getElementById('fc-iframe');
-  if(ifr){ ifr.src = FC_IFRAME_SRC + '?t=' + Date.now(); }
+async function importarFinControlLancamentos(){
+  if(!hasRole('dono','socio')){ toast('Acesso restrito ao financeiro.','error'); return; }
+  let lista=[];
+  try{ lista=JSON.parse(localStorage.getItem('fc_lanc')||'[]'); }catch(e){ lista=[]; }
+  const validos=(Array.isArray(lista)?lista:[]).filter(l=>l && !l.deletedAt && (Number(l.valor)||0)!==0 && l.id!=null);
+  if(!validos.length){ toast('Nenhum lançamento do FinControl encontrado neste navegador.','error'); return; }
+  if(!confirm(`Importar ${validos.length} lançamento(s) do FinControl para a nuvem (Fluxo de Caixa)?\n\nÉ seguro repetir: lançamentos já importados são atualizados, não duplicados.`)) return;
+  const rows=validos.map(_fcLancParaLancamento);
+  const btn=document.getElementById('btn-import-fc');
+  await safeOp('Erro ao importar lançamentos', async()=>{
+    let ok=0;
+    for(let i=0;i<rows.length;i+=100){
+      await handle(db.from('lancamentos').upsert(rows.slice(i,i+100),{onConflict:'workspace_id,fc_id'}));
+      ok+=Math.min(100, rows.length-i);
+    }
+    DB.lancamentos=await handle(db.from('lancamentos').select('*').eq('workspace_id',wsId()).order('data',{ascending:false}));
+    _sincronizarEstado();
+    if(document.getElementById('panel-fluxo-caixa')?.classList.contains('active')) atualizarFluxoCaixa();
+    logAudit('fincontrol','importou '+ok+' lançamento(s) do FinControl para a nuvem');
+    toast(`${ok} lançamento(s) importados para o Fluxo de Caixa.`,'success');
+  },{btn,loadingText:'Importando…'});
 }
-function fcAbrirNovaAba(){ window.open(FC_IFRAME_SRC, '_blank'); }
+
+/* ============ CONTAS A PAGAR/RECEBER + BANCÁRIAS + CENTROS (Fase 2) ============ */
+function _diasAte(d){ if(!d) return 9999; const a=new Date(d+'T12:00:00'), b=new Date(hojeISO()+'T12:00:00'); return Math.round((a-b)/86400000); }
+function _calcConta(c){ const r=Math.max(0,(c.total_parcelas||1)-(c.parcelas_pagas||0)); return { restantes:r, devedor:r*((c.valor_parcela||0)-(c.desconto||0)), pago:(c.parcelas_pagas||0)*(c.valor_parcela||0) }; }
+function _statusConta(c){ if((c.parcelas_pagas||0)>=(c.total_parcelas||1)) return 'pago'; const d=_diasAte(c.vencimento); if(d<0) return 'vencido'; if(d===0) return 'hoje'; if(d<=(c.alerta_dias||3)) return 'proximo'; return 'ok'; }
+
+function renderContas(){
+  if(!hasRole('dono','socio')){ toast('Acesso restrito.','error'); showPanel('dashboard',document.querySelector('[data-panel=dashboard]')); return; }
+  const contas=DB.contasFin||[];
+  const abertas=contas.filter(c=>_statusConta(c)!=='pago');
+  const aPagar=abertas.filter(c=>c.tipo==='pagar').reduce((s,c)=>s+_calcConta(c).devedor,0);
+  const aReceber=abertas.filter(c=>c.tipo==='receber').reduce((s,c)=>s+_calcConta(c).devedor,0);
+  const vencendo=abertas.filter(c=>{const d=_diasAte(c.vencimento);return d>=0&&d<=7;}).length;
+  const vencidas=abertas.filter(c=>_diasAte(c.vencimento)<0).length;
+  document.getElementById('contas-m-apagar').textContent=fmtBRL(aPagar);
+  document.getElementById('contas-m-apagar-sub').textContent=abertas.filter(c=>c.tipo==='pagar').length+' conta(s)';
+  document.getElementById('contas-m-areceber').textContent=fmtBRL(aReceber);
+  document.getElementById('contas-m-vencendo').textContent=vencendo;
+  document.getElementById('contas-m-vencidas').textContent=vencidas;
+  renderBoletosContas(); renderContasBanc(); renderCentros(); renderLegadoFc();
+}
+function renderBoletosContas(){
+  const el=document.getElementById('contas-boletos-list'); if(!el) return;
+  const contas=[...(DB.contasFin||[])].sort((a,b)=>(a.vencimento||'').localeCompare(b.vencimento||''));
+  if(!contas.length){ el.innerHTML='<div class="empty">Nenhuma conta cadastrada</div>'; return; }
+  const cls={pago:'ok',vencido:'critico',hoje:'pendente',proximo:'pendente',ok:'aberto'};
+  const lbl={pago:'Pago',vencido:'Vencido',hoje:'Vence hoje',proximo:'Próximo',ok:'Em dia'};
+  el.innerHTML=`<table class="table"><thead><tr><th>Descrição</th><th>Tipo</th><th>Vencimento</th><th>Parcelas</th><th>Valor parcela</th><th>Status</th><th></th></tr></thead><tbody>${contas.map(c=>{
+    const st=_statusConta(c);
+    return `<tr>
+      <td style="font-size:13px;">${esc(c.nome)}${c.cliente_nome?` <span style="font-size:11px;color:var(--text3)">· ${esc(c.cliente_nome)}</span>`:''}</td>
+      <td><span class="badge ${c.tipo==='receber'?'entregue':'servico'}">${c.tipo==='receber'?'A receber':'A pagar'}</span></td>
+      <td class="mono" style="font-size:12px;">${c.vencimento?fmtData(c.vencimento):'—'}</td>
+      <td class="mono" style="font-size:12px;">${c.parcelas_pagas||0}/${c.total_parcelas||1}</td>
+      <td class="mono">${fmtBRL(c.valor_parcela||0)}</td>
+      <td><span class="badge ${cls[st]}">${lbl[st]}</span></td>
+      <td style="white-space:nowrap;">
+        ${st!=='pago'?`<button class="btn-pay" onclick="pagarParcelaConta('${c.id}')" title="Registrar 1 parcela paga">✓ Parcela</button>`:''}
+        <button class="btn-edit" onclick="abrirModalConta('${c.id}')">Editar</button>
+        <button class="btn-danger" onclick="excluirConta('${c.id}')">×</button>
+      </td>
+    </tr>`;
+  }).join('')}</tbody></table>`;
+}
+function renderContasBanc(){
+  const el=document.getElementById('contas-banc-list'); if(!el) return;
+  const cbs=DB.contasBanc||[];
+  if(!cbs.length){ el.innerHTML='<div class="empty">Nenhuma conta bancária</div>'; return; }
+  el.innerHTML=cbs.map(cb=>`<div class="parcela-row"><span style="flex:1;font-size:13px;">${esc(cb.banco)}${cb.tipo?` <span style="font-size:11px;color:var(--text3)">· ${esc(cb.tipo)}</span>`:''}</span><span class="mono" style="font-size:12px;">${fmtBRL(cb.saldo_inicial||0)}</span><button class="btn-danger" onclick="excluirContaBanc('${cb.id}')">×</button></div>`).join('');
+}
+function renderCentros(){
+  const el=document.getElementById('contas-centros-list'); if(!el) return;
+  const cs=DB.centros||[];
+  if(!cs.length){ el.innerHTML='<div class="empty">Nenhum centro de custo</div>'; return; }
+  el.innerHTML=cs.map(n=>`<div class="parcela-row"><span style="flex:1;font-size:13px;">${esc(n)}</span><button class="btn-danger" onclick="excluirCentro('${esc(n).replace(/'/g,"\\'")}')">×</button></div>`).join('');
+}
+
+function abrirModalConta(id){
+  const c=id?(DB.contasFin||[]).find(x=>x.id===id):null;
+  document.getElementById('conta-id').value=c?c.id:'';
+  document.getElementById('conta-nome').value=c?c.nome||'':'';
+  document.getElementById('conta-tipo').value=c?c.tipo||'pagar':'pagar';
+  document.getElementById('conta-valor').value=c?c.valor_parcela||'':'';
+  document.getElementById('conta-total').value=c?c.total_parcelas||1:1;
+  document.getElementById('conta-pagas').value=c?c.parcelas_pagas||0:0;
+  document.getElementById('conta-venc').value=c?c.vencimento||'':'';
+  document.getElementById('conta-alerta').value=c?(c.alerta_dias!=null?c.alerta_dias:3):3;
+  document.getElementById('conta-cat').value=c?c.categoria||'':'';
+  document.getElementById('conta-obs').value=c?c.obs||'':'';
+  document.getElementById('modal-conta-title').textContent=c?'Editar conta':'Nova conta';
+  document.getElementById('modal-conta').classList.add('show');
+}
+async function salvarConta(){
+  const id=document.getElementById('conta-id').value;
+  const nome=document.getElementById('conta-nome').value.trim();
+  if(!nome){toast('Informe a descrição','error');return;}
+  const row={
+    id: id||undefined,
+    nome,
+    tipo: document.getElementById('conta-tipo').value,
+    valor_parcela: parseFloat(document.getElementById('conta-valor').value)||0,
+    total_parcelas: parseInt(document.getElementById('conta-total').value)||1,
+    parcelas_pagas: parseInt(document.getElementById('conta-pagas').value)||0,
+    vencimento: document.getElementById('conta-venc').value||null,
+    alerta_dias: parseInt(document.getElementById('conta-alerta').value)||0,
+    categoria: document.getElementById('conta-cat').value.trim()||null,
+    obs: document.getElementById('conta-obs').value.trim()||null,
+  };
+  await safeOp('Erro ao salvar conta', async()=>{
+    const row2={...row,workspace_id:wsId()};
+    let saved;
+    if(row2.id){ saved=await handle(db.from('contas_fin').update(row2).eq('id',row2.id).select().single()); DB.contasFin=DB.contasFin.map(x=>x.id===saved.id?saved:x); }
+    else { delete row2.id; saved=await handle(db.from('contas_fin').insert(row2).select().single()); DB.contasFin.push(saved); }
+    fecharModalId('modal-conta'); renderContas(); atualizarBadges();
+    toast('Conta salva','success');
+  });
+}
+async function excluirConta(id){
+  if(!confirm('Excluir esta conta?'))return;
+  await safeOp('Erro ao excluir', async()=>{
+    await handle(db.from('contas_fin').delete().eq('id',id));
+    DB.contasFin=DB.contasFin.filter(x=>x.id!==id); renderContas(); atualizarBadges();
+    toast('Conta excluída','success');
+  });
+}
+async function pagarParcelaConta(id){
+  const c=(DB.contasFin||[]).find(x=>x.id===id); if(!c)return;
+  const novo=Math.min((c.total_parcelas||1),(c.parcelas_pagas||0)+1);
+  await safeOp('Erro ao registrar parcela', async()=>{
+    const saved=await handle(db.from('contas_fin').update({parcelas_pagas:novo}).eq('id',id).select().single());
+    DB.contasFin=DB.contasFin.map(x=>x.id===id?saved:x); renderContas(); atualizarBadges();
+    toast('Parcela registrada','success');
+  });
+}
+async function salvarContaBanc(){
+  const banco=document.getElementById('cb-banco').value.trim();
+  if(!banco){toast('Informe o banco','error');return;}
+  const row={workspace_id:wsId(),banco,tipo:document.getElementById('cb-tipo').value.trim()||null,saldo_inicial:parseFloat(document.getElementById('cb-saldo').value)||0};
+  await safeOp('Erro ao salvar conta bancária', async()=>{
+    const saved=await handle(db.from('contas_bancarias').insert(row).select().single());
+    DB.contasBanc.push(saved);
+    document.getElementById('cb-banco').value='';document.getElementById('cb-tipo').value='';document.getElementById('cb-saldo').value='';
+    renderContasBanc(); toast('Conta bancária adicionada','success');
+  });
+}
+async function excluirContaBanc(id){
+  if(!confirm('Excluir conta bancária?'))return;
+  await safeOp('Erro ao excluir', async()=>{
+    await handle(db.from('contas_bancarias').delete().eq('id',id));
+    DB.contasBanc=DB.contasBanc.filter(x=>x.id!==id); renderContasBanc();
+  });
+}
+async function salvarCentro(){
+  const nome=document.getElementById('cc-nome').value.trim();
+  if(!nome){return;}
+  if((DB.centros||[]).includes(nome)){toast('Centro já existe','error');return;}
+  await safeOp('Erro ao salvar centro', async()=>{
+    await handle(db.from('centros_custo').insert({workspace_id:wsId(),nome}));
+    DB.centros.push(nome); DB.centros.sort();
+    document.getElementById('cc-nome').value=''; renderCentros();
+  });
+}
+async function excluirCentro(nome){
+  if(!confirm('Excluir centro de custo "'+nome+'"?'))return;
+  await safeOp('Erro ao excluir', async()=>{
+    await handle(db.from('centros_custo').delete().eq('workspace_id',wsId()).eq('nome',nome));
+    DB.centros=DB.centros.filter(n=>n!==nome); renderCentros();
+  });
+}
+
+// Importador FinControl Fase 2 (boletos + contas bancárias + centros)
+async function importarFinControlContas(){
+  if(!hasRole('dono','socio')){ toast('Acesso restrito.','error'); return; }
+  let bol=[],cb=[],ce=[];
+  try{ bol=JSON.parse(localStorage.getItem('fc_boletos')||'[]'); }catch(e){}
+  try{ cb=JSON.parse(localStorage.getItem('fc_contas_banc')||'[]'); }catch(e){}
+  try{ ce=JSON.parse(localStorage.getItem('fc_centros')||'[]'); }catch(e){}
+  const totalBol=Array.isArray(bol)?bol.filter(b=>b&&b.id&&!b.deletedAt).length:0;
+  if(!totalBol && !cb.length && !ce.length){ toast('Nada do FinControl encontrado neste navegador.','error'); return; }
+  if(!confirm(`Importar ${totalBol} conta(s)/boleto(s), ${cb.length} conta(s) bancária(s) e ${ce.length} centro(s) do FinControl?\n\nSeguro repetir (dedupe por origem).`)) return;
+  const btn=document.getElementById('btn-import-contas');
+  await safeOp('Erro ao importar', async()=>{
+    // Boletos → contas_fin (upsert por fc_id)
+    const rowsBol=(Array.isArray(bol)?bol:[]).filter(b=>b&&b.id&&!b.deletedAt).map(b=>({
+      workspace_id:wsId(), nome:(b.nome||'Conta').toString().trim()||'Conta',
+      tipo: b.tipo==='receber'?'receber':'pagar',
+      valor_parcela:Number(b.valorParcela)||0, total_parcelas:parseInt(b.totalParcelas)||1,
+      parcelas_pagas:parseInt(b.parcelasPagas)||0, vencimento:b.vencimento||null,
+      desconto:Number(b.desconto)||0, alerta_dias:parseInt(b.alertaDias)||3,
+      categoria:b.cat||null, obs:b.obs||null, cliente_nome:b.clienteNome||null, fc_id:String(b.id),
+    }));
+    if(rowsBol.length) await handle(db.from('contas_fin').upsert(rowsBol,{onConflict:'workspace_id,fc_id'}));
+    // Contas bancárias → upsert por fc_id
+    const rowsCb=(Array.isArray(cb)?cb:[]).filter(x=>x&&x.id).map(x=>({
+      workspace_id:wsId(), banco:(x.banco||'Banco').toString(), tipo:x.tipo||null,
+      saldo_inicial:Number(x.saldoInicial)||0, fc_id:String(x.id),
+    }));
+    if(rowsCb.length) await handle(db.from('contas_bancarias').upsert(rowsCb,{onConflict:'workspace_id,fc_id'}));
+    // Centros (strings) → upsert por (workspace_id,nome)
+    const rowsCe=(Array.isArray(ce)?ce:[]).filter(Boolean).map(n=>({workspace_id:wsId(),nome:String(n)}));
+    if(rowsCe.length) await handle(db.from('centros_custo').upsert(rowsCe,{onConflict:'workspace_id,nome'}));
+    // recarrega
+    const wid=wsId();
+    const [cf,cbb,cee]=await Promise.all([
+      handle(db.from('contas_fin').select('*').eq('workspace_id',wid).order('vencimento')),
+      handle(db.from('contas_bancarias').select('*').eq('workspace_id',wid)),
+      handle(db.from('centros_custo').select('*').eq('workspace_id',wid).order('nome')),
+    ]);
+    DB.contasFin=cf||[]; DB.contasBanc=cbb||[]; DB.centros=(cee||[]).map(c=>c.nome);
+    renderContas(); atualizarBadges();
+    logAudit('fincontrol','importou contas/boletos do FinControl');
+    toast('Importação concluída.','success');
+  },{btn,loadingText:'Importando…'});
+}
+
+// Fase 3 — categorias (merge) + preservação de recorrências/regras/pessoas/vendedores
+async function importarFinControlFase3(){
+  if(!hasRole('dono','socio')){ toast('Acesso restrito.','error'); return; }
+  let cats={},rec=[],reg=[],pes=[],ven=[];
+  try{ cats=JSON.parse(localStorage.getItem('fc_cats')||'{}'); }catch(e){}
+  try{ rec=JSON.parse(localStorage.getItem('fc_rec')||'[]'); }catch(e){}
+  try{ reg=JSON.parse(localStorage.getItem('fc_regras')||'[]'); }catch(e){}
+  try{ pes=JSON.parse(localStorage.getItem('fc_pessoas')||'[]'); }catch(e){}
+  try{ ven=JSON.parse(localStorage.getItem('fc_vendedores')||'[]'); }catch(e){}
+  const btn=document.getElementById('btn-import-fase3');
+  await safeOp('Erro ao importar', async()=>{
+    const catRows=[];
+    ['entrada','saida'].forEach(t=>{ (Array.isArray(cats[t])?cats[t]:[]).forEach(nome=>{ if(nome) catRows.push({workspace_id:wsId(),tipo:t,nome:String(nome)}); }); });
+    if(catRows.length) await handle(db.from('categorias_financeiras').upsert(catRows,{onConflict:'workspace_id,tipo,nome'}));
+    const leg=[];
+    (Array.isArray(rec)?rec:[]).forEach(r=>r&&r.id&&leg.push({workspace_id:wsId(),tipo:'recorrencia',fc_id:String(r.id),dados:r}));
+    (Array.isArray(reg)?reg:[]).forEach(r=>r&&r.id&&leg.push({workspace_id:wsId(),tipo:'regra',fc_id:String(r.id),dados:r}));
+    (Array.isArray(pes)?pes:[]).forEach(p=>p&&p.id&&leg.push({workspace_id:wsId(),tipo:'pessoa',fc_id:String(p.id),dados:p}));
+    (Array.isArray(ven)?ven:[]).forEach(v=>v&&v.id&&leg.push({workspace_id:wsId(),tipo:'vendedor',fc_id:String(v.id),dados:v}));
+    if(leg.length) await handle(db.from('fincontrol_legado').upsert(leg,{onConflict:'workspace_id,tipo,fc_id'}));
+    const wid=wsId();
+    const [cats2,leg2]=await Promise.all([
+      handle(db.from('categorias_financeiras').select('*').eq('workspace_id',wid)),
+      handle(db.from('fincontrol_legado').select('*').eq('workspace_id',wid)),
+    ]);
+    DB.categorias.entrada=(cats2||[]).filter(c=>c.tipo==='entrada').map(c=>c.nome);
+    DB.categorias.saida=(cats2||[]).filter(c=>c.tipo==='saida').map(c=>c.nome);
+    DB.legado=leg2||[];
+    renderLegadoFc();
+    logAudit('fincontrol','importou categorias/recorrências/regras (Fase 3)');
+    toast(`Importado: ${catRows.length} categoria(s) e ${leg.length} registro(s) legado(s).`,'success');
+  },{btn,loadingText:'Importando…'});
+}
+function renderLegadoFc(){
+  const el=document.getElementById('contas-legado-list'); if(!el) return;
+  const leg=DB.legado||[];
+  if(!leg.length){ el.innerHTML='<div class="empty">Nada preservado ainda</div>'; return; }
+  const lbl={recorrencia:'Recorrência',regra:'Regra',pessoa:'Pessoa/CRM',vendedor:'Vendedor'};
+  el.innerHTML=leg.map(x=>{
+    const d=x.dados||{};
+    const nome=d.desc||d.nome||d.contem||x.fc_id||'—';
+    let det='';
+    if(x.tipo==='recorrencia') det=`${d.tipo||''} ${fmtBRL(d.valor||0)} · ${d.freq||''}`;
+    else if(x.tipo==='regra')  det=`SE "${d.contem||''}" → ${d.cat||''}`;
+    else if(x.tipo==='vendedor') det=`${d.pct||0}%`;
+    return `<div class="parcela-row"><span style="flex:1;font-size:12px;"><span class="badge servico">${lbl[x.tipo]||esc(x.tipo)}</span> ${esc(String(nome))}</span><span style="font-size:11px;color:var(--text3)">${esc(det)}</span></div>`;
+  }).join('');
+}
 
 /* (Fase 0) Hooks de double-write no localStorage removidos.
    As saídas de OS, salários e compras já são lançados no Supabase
