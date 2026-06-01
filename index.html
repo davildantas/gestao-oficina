@@ -2746,8 +2746,9 @@ function atualizarDashboard(){
       <div style="font-size:11px;color:var(--text3);">${esc(m.v.cliente)} · ${m.tipo==='entrada'?fmtDataHora(m.v.dataEntrada,m.v.horaEntrada):fmtDataHora(m.v.saida.data,m.v.saida.hora)}</div>
     </div></div>`).join('');
 
-  // O card de status do FinControl é preenchido por fcAtualizarCardDashboard()
-  // (via _patchDashFc), com texto honesto sobre os dados locais do FinControl.
+  // FinControl (agora integrado via tabela lancamentos no Supabase)
+  const fcs=document.getElementById('fc-status');
+  if(fcs)fcs.innerHTML=`<span style="color:var(--green-dark);">● Conectado ao Supabase</span> — ${DB.lancamentos.length} lançamento(s).<br><span style="font-size:12px;color:var(--text3);">Saídas com valor e salários são lançados automaticamente.</span>`;
 }
 
 /* ============ KANBAN ============ */
@@ -6753,20 +6754,51 @@ function restaurarPlanPadrao(){
 const FC_LANC_KEY = 'fc_lancamentos';
 const FC_IFRAME_SRC = 'fincontrol-v3.html';
 
-// (Fase 0) fcLancar/fcGetResumo removidos: o double-write em localStorage
-// (fc_lancamentos) foi descontinuado. O financeiro real vive no Supabase
-// (tabela lancamentos / Fluxo de Caixa). O FinControl Pro (iframe) ainda mantém
-// seus próprios dados locais, que serão migrados nas próximas fases.
+function fcLancar(tipo, desc, valor, cat){
+  try{
+    const lista=JSON.parse(localStorage.getItem(FC_LANC_KEY)||'[]');
+    lista.push({
+      id: (crypto.randomUUID ? crypto.randomUUID() : 'fc-'+Date.now()+Math.random().toString(36).slice(2,8)),
+      tipo, desc, valor: Number(valor)||0, cat,
+      data: new Date().toISOString().slice(0,10),
+      forma: 'PIX',
+      criado: new Date().toISOString(),
+      origem: 'oficina_manager'
+    });
+    localStorage.setItem(FC_LANC_KEY, JSON.stringify(lista));
+  }catch(e){ console.warn('[fcLancar] falha', e); }
+}
+
+function fcGetResumo(){
+  try{
+    const lista=JSON.parse(localStorage.getItem(FC_LANC_KEY)||'[]');
+    const mes=new Date().toISOString().slice(0,7);
+    const doMes=lista.filter(l=>(l.data||'').startsWith(mes));
+    const entradas=doMes.filter(l=>l.tipo==='entrada').reduce((s,l)=>s+(Number(l.valor)||0),0);
+    const saidas  =doMes.filter(l=>l.tipo==='saida'  ).reduce((s,l)=>s+(Number(l.valor)||0),0);
+    return { entradas, saidas, saldo: entradas-saidas, count: lista.length };
+  }catch(e){ return { entradas:0, saidas:0, saldo:0, count:0 }; }
+}
 
 function fcAtualizarCardDashboard(){
   const el=document.getElementById('fc-status'); if(!el) return;
+  if(!hasRole('dono','socio')){
+    el.innerHTML = `<span style="color:var(--green-dark);">● Conectado ao Supabase</span> — ${DB.lancamentos.length} lançamento(s).`;
+    return;
+  }
+  const r=fcGetResumo();
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
       <div>
-        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">FinControl Pro</div>
-        <div style="font-size:12px;color:var(--text3);margin-top:2px">⚠️ Dados ainda locais neste navegador (não sincronizados na nuvem). Migração em andamento.</div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Resumo FinControl Pro (mês atual)</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:2px">${r.count} lançamento(s) no localStorage</div>
       </div>
-      <button class="btn-secondary" onclick="showPanel('fincontrol', document.querySelector('[data-panel=fincontrol]'))">Abrir →</button>
+      <div style="display:flex;gap:14px;flex-wrap:wrap">
+        <div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Entradas</div><div style="font-family:'DM Mono',monospace;font-weight:600;color:var(--green-dark)">${fmtBRL(r.entradas)}</div></div>
+        <div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Saídas</div><div style="font-family:'DM Mono',monospace;font-weight:600;color:var(--red-dark)">${fmtBRL(r.saidas)}</div></div>
+        <div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Saldo</div><div style="font-family:'DM Mono',monospace;font-weight:700;color:${r.saldo>=0?'var(--green-dark)':'var(--red-dark)'}">${fmtBRL(r.saldo)}</div></div>
+        <button class="btn-secondary" onclick="showPanel('fincontrol', document.querySelector('[data-panel=fincontrol]'))">Abrir →</button>
+      </div>
     </div>`;
 }
 
@@ -6795,9 +6827,61 @@ function fcRecarregarIframe(){
 }
 function fcAbrirNovaAba(){ window.open(FC_IFRAME_SRC, '_blank'); }
 
-/* (Fase 0) Hooks de double-write no localStorage removidos.
-   As saídas de OS, salários e compras já são lançados no Supabase
-   (sbSalvarLancamento). Não há mais espelho em fc_lancamentos. */
+/* Hooks de integração: monkey-patch para lançar no FinControl
+   (mantém comportamento original intacto e injeta fcLancar no fluxo) */
+(function _instalarFcHooks(){
+  // Saída de veículo → entrada FinControl
+  if(typeof confirmarSaida === 'function' && !confirmarSaida.__fcHooked){
+    const orig = confirmarSaida;
+    confirmarSaida = function(){
+      const id=document.getElementById('saida-id').value;
+      const v=veiculos.find(x=>x.id===id);
+      const valor=parseFloat(document.getElementById('saida-valor').value)||0;
+      const r = orig.apply(this, arguments);
+      try{
+        if(v && valor>0) fcLancar('entrada', `Serviço: ${v.modelo||''} (${v.placa||''})`, valor, 'Serviços de Oficina');
+        fcAtualizarCardDashboard();
+      }catch(e){}
+      return r;
+    };
+    confirmarSaida.__fcHooked = true;
+  }
+  // Pagamento de salário → saída FinControl
+  if(typeof confirmarPagamento === 'function' && !confirmarPagamento.__fcHooked){
+    const orig = confirmarPagamento;
+    confirmarPagamento = function(){
+      const colabId=document.getElementById('pagar-colab-id').value;
+      const c=colabs.find(x=>x.id===colabId);
+      const r = orig.apply(this, arguments);
+      try{
+        if(c) fcLancar('saida', `Salário: ${c.nome}`, parseFloat(c.salario)||0, 'Folha de Pagamento');
+        fcAtualizarCardDashboard();
+      }catch(e){}
+      return r;
+    };
+    confirmarPagamento.__fcHooked = true;
+  }
+  // Compra de material → saída FinControl
+  if(typeof salvarEstoque === 'function' && !salvarEstoque.__fcHooked){
+    const orig = salvarEstoque;
+    salvarEstoque = async function(){
+      const id=document.getElementById('est-id').value;
+      const isNew = !id;
+      const nome=(document.getElementById('est-nome').value||'').trim();
+      const qtd =parseInt(document.getElementById('est-qtd').value)||0;
+      const preco=parseFloat(document.getElementById('est-preco').value)||0;
+      const r = await orig.apply(this, arguments);
+      try{
+        if(isNew && qtd>0 && preco>0){
+          fcLancar('saida', `Compra: ${nome} (x${qtd})`, qtd*preco, 'Compras/Estoque');
+          fcAtualizarCardDashboard();
+        }
+      }catch(e){}
+      return r;
+    };
+    salvarEstoque.__fcHooked = true;
+  }
+})();
 
 /* Patch do dashboard para atualizar card FinControl (não substitui original) */
 (function _patchDashFc(){
