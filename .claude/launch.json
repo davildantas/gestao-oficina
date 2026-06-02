@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "oficina",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8787"],
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["/Users/davi/Desktop/ConsertCar/Melhorias/.claude/worktrees/quizzical-rosalind-811c7d/.claude/serve.js"],
       "port": 8787
     }
   ]
