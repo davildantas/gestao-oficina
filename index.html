@@ -7337,7 +7337,7 @@ sbVerificarSessao().then(sessao => {
   window.salvarVeiculoOrc = async function(){
     if(!currentOrc) return;
     Object.assign(currentOrc,{tipo_veiculo:currentOrc.tipo_veiculo||'sedan',veiculo_modelo:document.getElementById('orc-v-modelo').value.trim(),veiculo_ano:document.getElementById('orc-v-ano').value.trim(),veiculo_placa:document.getElementById('orc-v-placa').value.trim().toUpperCase(),veiculo_km:parseFloat(document.getElementById('orc-v-km').value)||null,veiculo_motor:document.getElementById('orc-v-motor').value,veiculo_cor:document.getElementById('orc-v-cor').value.trim(),veiculo_chassi:document.getElementById('orc-v-chassi').value.trim(),entrada_guincho:document.getElementById('orc-guincho').checked,possui_seguro:document.getElementById('orc-seguro').checked,cliente_id:document.getElementById('orc-cliente-sel').value||null,atualizado_em:new Date().toISOString()});
-    await handle(db.from('orcamentos').update(currentOrc).eq('id',currentOrc.id));
+    await handle(db.from('orcamentos').update(_orcPayload(currentOrc)).eq('id',currentOrc.id));
     renderVeiculoResumo(); toggleVeiculoForm(); toast('Veículo salvo!','success');
   };
 
@@ -7412,11 +7412,14 @@ sbVerificarSessao().then(sessao => {
     renderServicosLista(); fecharModalServico();
   };
 
+  // Remove chaves internas (ex: _servicos) que não são colunas da tabela orcamentos
+  function _orcPayload(o){ const p={}; for(const k in o){ if(!k.startsWith('_')) p[k]=o[k]; } return p; }
+
   window.salvarOrcamento = async function(){
     if(!currentOrc) return;
     const tipo=document.querySelector('input[name="orc-desc-tipo"]:checked')?.value||'porcentagem';
     Object.assign(currentOrc,{observacoes:document.getElementById('orc-obs').value,desconto_tipo:tipo,desconto_valor:parseFloat(document.getElementById('orc-desc-val').value)||0,condicao_pagamento:document.getElementById('orc-cond-pgto').value,cliente_id:document.getElementById('orc-cliente-sel').value||null,atualizado_em:new Date().toISOString()});
-    await handle(db.from('orcamentos').update(currentOrc).eq('id',currentOrc.id));
+    await handle(db.from('orcamentos').update(_orcPayload(currentOrc)).eq('id',currentOrc.id));
     const idx=orcamentos.findIndex(o=>o.id===currentOrc.id); if(idx>=0) orcamentos[idx]={...orcamentos[idx],...currentOrc};
     toast('Orçamento salvo!','success');
   };
