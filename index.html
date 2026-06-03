@@ -998,7 +998,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
       <button class="nav-item" data-panel="materiais-os" data-role="dono,socio,gerente,assistente" onclick="showPanel('materiais-os',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-5 14H4v-4h11v4zm0-5H4V9h11v4zm5 5h-4V9h4v9z"/></svg>Materiais por OS</button>
       <button class="nav-item" data-panel="planejamento" data-role="dono,socio,gerente,assistente" onclick="showPanel('planejamento',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg>Planejamento</button>
       <div class="nav-section" data-role="dono,socio">FinControl</div>
-      <button class="nav-item" data-panel="fluxo-caixa" data-role="dono,socio" onclick="showPanel('fluxo-caixa',this)" title="O FinControl foi integrado ao Fluxo de Caixa"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>FinControl Pro</button>
+      <button class="nav-item" data-panel="fincontrol" data-role="dono,socio" onclick="showPanel('fincontrol',this)" title="FinControl Pro — dados em localStorage do navegador"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>FinControl Pro</button>
       <div class="nav-section" data-role="dono,socio">Sistema</div>
       <button class="nav-item" data-panel="config" data-role="dono,socio" onclick="showPanel('config',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/></svg>Configurações</button>
       <button class="nav-item" data-panel="auditoria" data-role="dono,socio" onclick="showPanel('auditoria',this)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>Auditoria</button>
@@ -1669,10 +1669,17 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
       </div>
     </div>
 
-    <!-- FINCONTROL PRO (iframe) -->
-    <!-- FinControl Pro aposentado (Fase 4): o financeiro migrou para Fluxo de Caixa
-         e Contas a Pagar. O menu "FinControl Pro" redireciona para o Fluxo de Caixa.
-         As ferramentas de importação e o acesso ao app legado ficam em Contas a Pagar. -->
+    <!-- FINCONTROL PRO (iframe) — dados em localStorage do navegador -->
+    <div id="panel-fincontrol" class="panel">
+      <div class="page-header">
+        <div><div class="page-title">FinControl Pro</div><div class="page-sub">Sistema financeiro completo — dados em localStorage do navegador</div></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-secondary" onclick="fcAbrirNovaAba()">↗ Abrir em nova aba</button>
+          <button class="btn-secondary" onclick="fcRecarregarIframe()">↻ Recarregar</button>
+        </div>
+      </div>
+      <div class="fc-iframe-wrap"><iframe id="fc-iframe" src="about:blank" title="FinControl Pro"></iframe></div>
+    </div>
 
     <!-- AUDITORIA -->
     <div id="panel-auditoria" class="panel">
@@ -2724,6 +2731,7 @@ function showPanel(id,btn){
   if(id==='materiais-os')renderMateriaisOs();
   if(id==='planejamento')renderPlanejamento();
   if(id==='contas')renderContas();
+  if(id==='fincontrol')abrirFincontrol();
 }
 
 function hasRole(...roles){ return roles.includes(session?.role); }
@@ -6850,15 +6858,32 @@ const FC_IFRAME_SRC = 'fincontrol-v3.html';  // app legado (consulta via "Abrir 
 // (tabela lancamentos / Fluxo de Caixa). O FinControl Pro (iframe) ainda mantém
 // seus próprios dados locais, que serão migrados nas próximas fases.
 
+// FinControl Pro (iframe): app financeiro completo com dados em localStorage do
+// navegador. Carregado sob demanda ao abrir o painel.
+let _fcIframeLoaded=false;
+function abrirFincontrol(){
+  const ifr=document.getElementById('fc-iframe');
+  if(!ifr) return;
+  if(!_fcIframeLoaded){
+    ifr.src = FC_IFRAME_SRC;
+    _fcIframeLoaded=true;
+  }
+}
+function fcRecarregarIframe(){
+  const ifr=document.getElementById('fc-iframe');
+  if(ifr){ ifr.src = FC_IFRAME_SRC + '?t=' + Date.now(); _fcIframeLoaded=true; }
+}
+function fcAbrirNovaAba(){ window.open(FC_IFRAME_SRC,'_blank'); }
+
 function fcAtualizarCardDashboard(){
   const el=document.getElementById('fc-status'); if(!el) return;
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
       <div>
-        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">FinControl</div>
-        <div style="font-size:12px;color:var(--text3);margin-top:2px">✅ Integrado à nuvem: financeiro em <strong>Fluxo de Caixa</strong> e <strong>Contas a Pagar</strong>.</div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">FinControl Pro</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:2px">💾 Dados em <strong>localStorage</strong> deste navegador. Financeiro na nuvem em <strong>Fluxo de Caixa</strong> e <strong>Contas a Pagar</strong>.</div>
       </div>
-      <button class="btn-secondary" onclick="showPanel('fluxo-caixa', document.querySelector('[data-panel=fluxo-caixa]'))">Abrir →</button>
+      <button class="btn-secondary" onclick="showPanel('fincontrol', document.querySelector('[data-panel=fincontrol]'))">Abrir →</button>
     </div>`;
 }
 
