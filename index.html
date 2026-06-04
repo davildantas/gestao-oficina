@@ -431,12 +431,25 @@ async function sbCarregarMovimentacoes(estoqueId, limit=50) {
 
 async function sbSalvarPagamento(pag) {
   const row = { ...pag, workspace_id: wsId() }; delete row.id;
-  return handle(db.from('pagamentos').insert(row).select().single());
+  // SELECT de `pagamentos` é restrito a financeiro; ver nota em sbSalvarLancamento.
+  if (hasRole('dono','socio'))
+    return handle(db.from('pagamentos').insert(row).select().single());
+  await handle(db.from('pagamentos').insert(row));
+  return null;
 }
 
 async function sbSalvarLancamento(lanc) {
   const row = { ...lanc, workspace_id: wsId() }; delete row.id;
-  return handle(db.from('lancamentos').insert(row).select().single());
+  // A policy de INSERT de `lancamentos` é aberta (qualquer membro pode gerar
+  // receita/despesa automática — compra de material, receita de OS, etc.), mas
+  // a de SELECT exige tem_financeiro() (só dono/sócio). Pedir o retorno com
+  // .select() dispara a policy de SELECT e estoura 42501 ("Sem permissão") para
+  // gerente/assistente/operador. Então só pedimos a representação para quem tem
+  // leitura do livro financeiro; os demais inserem sem retorno.
+  if (hasRole('dono','socio'))
+    return handle(db.from('lancamentos').insert(row).select().single());
+  await handle(db.from('lancamentos').insert(row));
+  return null;
 }
 
 async function sbSalvarAgenda(evento) {
@@ -449,7 +462,12 @@ async function sbExcluirAgenda(id) { await handle(db.from('agenda').delete().eq(
 async function sbSalvarParcela(parcela) {
   const row = { ...parcela, workspace_id: wsId() };
   if (row.id) return handle(db.from('parcelas').update(row).eq('id', row.id).select().single());
-  delete row.id; return handle(db.from('parcelas').insert(row).select().single());
+  delete row.id;
+  // SELECT de `parcelas` é restrito a financeiro; ver nota em sbSalvarLancamento.
+  if (hasRole('dono','socio'))
+    return handle(db.from('parcelas').insert(row).select().single());
+  await handle(db.from('parcelas').insert(row));
+  return null;
 }
 async function sbPagarParcela(id) { return handle(db.from('parcelas').update({ pago: true, pago_em: new Date().toISOString() }).eq('id', id).select().single()); }
 
@@ -1562,9 +1580,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
         <div class="card-title">Convites
           <div style="display:flex;gap:6px;align-items:center;">
             <select id="convite-role" style="height:32px;padding:0 8px;border:1px solid var(--border2);border-radius:var(--radius);font-size:12px;background:var(--surface);color:var(--text);font-family:'DM Sans',sans-serif;">
-              <option value="operador">Operador</option>
-              <option value="gerente">Gerente</option>
               <option value="assistente">Assistente</option>
+              <option value="gerente">Gerente</option>
             </select>
             <button class="btn-primary" onclick="gerarConvite()">+ Gerar codigo</button>
           </div>
@@ -4622,7 +4639,7 @@ async function revogarConvite(id){
 function abrirModalUser() {
   document.getElementById('modal-user-title').textContent = 'Convidar usuário';
   ['user-id','user-name','user-username','user-pass'].forEach(id => { const e=document.getElementById(id); if(e)e.value=''; });
-  const roleEl = document.getElementById('user-role'); if(roleEl) roleEl.value = 'operador';
+  const roleEl = document.getElementById('user-role'); if(roleEl) roleEl.value = 'assistente';
   // Mostrar dica de e-mail no campo usuário
   const uLabel = document.querySelector('label[for="user-username"]');
   if(uLabel) uLabel.textContent = 'E-MAIL DO NOVO USUÁRIO';
