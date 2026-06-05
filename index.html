@@ -2873,7 +2873,11 @@ function atualizarKanban(){
   board.innerHTML='';
   KANBAN_COLS.filter(c=>!c.hidden).forEach(col=>{
     let cards;
-    if(col.id==='entregue')cards=veiculos.filter(v=>v.saida).slice(-15).reverse();
+    if(col.id==='entregue'){
+      const am=new Date().getFullYear()+'-'+pad(new Date().getMonth()+1);
+      cards=veiculos.filter(v=>v.saida&&v.saida.data&&v.saida.data.startsWith(am))
+        .sort((a,b)=>(b.saida.data+b.saida.hora).localeCompare(a.saida.data+a.saida.hora));
+    }
     else cards=veiculos.filter(v=>!v.saida&&(v.kanbanStatus||'aguardando')===col.id);
     const colEl=document.createElement('div');
     colEl.className='kanban-col';colEl.setAttribute('data-col',col.id);
