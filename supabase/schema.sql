@@ -79,7 +79,7 @@ create table public.veiculos (
   km            numeric(10,0),
   servico       text,
   descricao     text,
-  status        text not null default 'aguardando' check (status in ('aguardando','em-andamento','aguardando-pecas','pronto','entregue','cancelado')),
+  status        text not null default 'aguardando' check (status in ('aguardando','aguardando-pecas','em-andamento','preparacao','pintura','polimento','pronto','entregue','cancelado')),
   responsavel_id uuid references public.colaboradores(id) on delete set null,
   valor_orcamento numeric(12,2),
   valor_final    numeric(12,2),
