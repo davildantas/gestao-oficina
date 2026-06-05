@@ -1,0 +1,13 @@
+# Netlify — política de cache
+# O HTML deve ser sempre revalidado após um deploy, senão o navegador pode
+# servir uma versão antiga do app (ex.: a gerente via o Kanban antigo).
+# max-age=0 + must-revalidate força o navegador a checar o servidor a cada
+# carregamento; o Netlify responde 304 quando nada mudou (rápido) e a versão
+# nova quando há deploy.
+
+/
+  Cache-Control: public, max-age=0, must-revalidate
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+/*.html
+  Cache-Control: public, max-age=0, must-revalidate
