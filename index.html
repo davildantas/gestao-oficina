@@ -452,6 +452,21 @@ async function sbSalvarLancamento(lanc) {
   return null;
 }
 
+// Receita de OS: única porta para lançar RECEITA (entrada). A RPC é
+// SECURITY DEFINER, amarra o lançamento a uma OS real do workspace, força
+// tipo/categoria no servidor e carimba o autor. Não-admin não consegue mais
+// inserir receita arbitrária direto na tabela (a policy de INSERT bloqueia).
+// Retorna o id do lançamento (uuid).
+async function sbRegistrarReceitaOS(veiculoId, valor, forma, obs, data) {
+  return handle(db.rpc('registrar_receita_os', {
+    p_veiculo_id: veiculoId,
+    p_valor: valor,
+    p_forma: forma || null,
+    p_obs: obs || null,
+    p_data: data || hojeISO()
+  }));
+}
+
 async function sbSalvarAgenda(evento) {
   const row = { ...evento, workspace_id: wsId() };
   if (row.id) return handle(db.from('agenda').update(row).eq('id', row.id).select().single());
@@ -3137,8 +3152,13 @@ function confirmarSaida(){
     else if(config.autoReceita==='ask')lanca=confirm('Lançar receita de '+fmtBRL(valor)+' no FinControl?');
   }
   if(lanca){
-    const lanc={tipo:'entrada',descricao:'Serviço — '+v.modelo+' ('+v.placa+') — '+v.cliente,valor,categoria:config.catServico,data:v.saida.data,obs:v.servico+' · '+pgto+(obs?' · '+obs:'')};
-    sbSalvarLancamento(lanc).then(r=>{if(r)DB.lancamentos.unshift(r);}).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
+    // Receita de OS via RPC (amarra à OS, força tipo/categoria no servidor e
+    // carimba o autor). Substitui o INSERT direto — não-admin não pode mais
+    // lançar receita arbitrária na tabela.
+    const obsLanc=v.servico+' · '+pgto+(obs?' · '+obs:'');
+    sbRegistrarReceitaOS(v.id, valor, pgto, obsLanc, v.saida.data).then(id=>{
+      if(id&&hasRole('dono','socio'))DB.lancamentos.unshift({id,tipo:'entrada',descricao:'Serviço — '+v.modelo+' ('+v.placa+')',valor,categoria:config.catServico,data:v.saida.data,forma:pgto,obs:obsLanc,veiculo_id:v.id,origem:'oficina'});
+    }).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
   }
   sbSalvarVeiculo(v).catch(e=>toast('Erro: '+(e.friendlyMessage||e.message),'error'));
   fecharModalId('modal-saida');logAudit('saida',`${v.placa} - ${fmtBRL(valor)} - ${pgto}`);
