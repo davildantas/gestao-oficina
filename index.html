@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Evita que o navegador sirva uma versão antiga do app após um deploy -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Oficina Manager — Sistema de Gestão</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -250,7 +254,7 @@ async function carregarTudo() {
 }
 
 // ─── MAPPERS UI ↔ DB (veiculos) ───────────────────────────────
-const STATUS_VALIDOS = new Set(['aguardando','em-andamento','aguardando-pecas','pronto','entregue','cancelado']);
+const STATUS_VALIDOS = new Set(['aguardando','aguardando-pecas','em-andamento','preparacao','pintura','polimento','pronto','entregue','cancelado']);
 const soDigitos = s => (s || '').toString().replace(/\D/g, '');
 function combinarDataHora(data, hora) {
   if (!data) return null;
@@ -665,6 +669,9 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .badge.aguardando{background:var(--surface2);color:var(--text2)}
 .badge.em-andamento{background:var(--blue-bg);color:var(--blue)}
 .badge.aguardando-pecas{background:var(--purple-bg);color:var(--purple)}
+.badge.preparacao{background:var(--orange-bg);color:var(--orange)}
+.badge.pintura{background:#FBE3EE;color:#B23A75}
+.badge.polimento{background:#DBF3F5;color:#0B7A85}
 .badge.pronto{background:var(--green-bg);color:var(--green-dark)}
 .badge.critico{background:var(--red-bg);color:var(--red-dark)}
 .badge.ok{background:var(--green-bg);color:var(--green-dark)}
@@ -690,11 +697,15 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .filter-btn{padding:5px 14px;border-radius:20px;border:1px solid var(--border2);background:none;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;color:var(--text2);transition:all .15s;font-weight:500}
 .filter-btn.active{background:var(--text);color:var(--bg);border-color:var(--text)}
 /* KANBAN */
-.kanban-board{display:flex;gap:12px;overflow-x:auto;padding-bottom:1rem;align-items:flex-start}
-.kanban-col{flex:0 0 250px;background:var(--surface2);border-radius:var(--radius-lg);padding:12px;min-height:200px}
+.kanban-board{display:flex;flex-direction:column;gap:12px;padding-bottom:1rem}
+.kanban-col{display:flex;align-items:stretch;gap:12px;background:var(--surface2);border-radius:var(--radius-lg);padding:12px;min-height:110px}
 .kanban-col.drag-target{background:var(--green-bg);border:2px dashed var(--green)}
-.kanban-col-header{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between}
+.kanban-col-header{flex:0 0 150px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;display:flex;flex-direction:column;align-items:flex-start;gap:6px;border-right:1px solid var(--border);padding-right:12px}
 .kanban-col-count{background:var(--surface);border-radius:10px;font-size:10px;padding:2px 7px;font-weight:600;color:var(--text2)}
+.kanban-lane-cards{display:flex;flex-direction:row;align-items:stretch;gap:10px;overflow-x:auto;flex:1 1 auto;min-width:0;padding-bottom:4px}
+.kanban-lane-cards:empty::after{content:'—';color:var(--text3);font-size:12px;align-self:center}
+.kanban-lane-cards .kanban-card{flex:0 0 240px;width:240px;margin-bottom:0;min-height:148px;display:flex;flex-direction:column}
+.kanban-lane-cards .kanban-card-actions{margin-top:auto;padding-top:8px}
 .kanban-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:8px;cursor:grab;transition:box-shadow .15s}
 .kanban-card:hover{box-shadow:var(--shadow)}
 .kanban-card.dragging{opacity:.5}
@@ -1905,20 +1916,26 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
     <div class="form-row">
       <div class="form-group"><label>Status *</label>
         <select id="ev-status">
-          <option value="aguardando">Aguardando</option>
-          <option value="em-andamento">Em andamento</option>
-          <option value="aguardando-pecas">Aguardando peças</option>
-          <option value="pronto">Pronto</option>
+          <option value="aguardando">Aguardando Autorização de Orçamento</option>
+          <option value="aguardando-pecas">Aguardando Peças</option>
+          <option value="em-andamento">Funilaria</option>
+          <option value="preparacao">Preparação</option>
+          <option value="pintura">Pintura</option>
+          <option value="polimento">Polimento</option>
+          <option value="pronto">Check-Out</option>
           <option value="entregue">Entregue</option>
           <option value="cancelado">Cancelado</option>
         </select>
       </div>
       <div class="form-group"><label>Kanban status</label>
         <select id="ev-kanban-status">
-          <option value="aguardando">Aguardando</option>
-          <option value="em-andamento">Em andamento</option>
-          <option value="aguardando-pecas">Aguardando peças</option>
-          <option value="pronto">Pronto</option>
+          <option value="aguardando">Aguardando Autorização de Orçamento</option>
+          <option value="aguardando-pecas">Aguardando Peças</option>
+          <option value="em-andamento">Funilaria</option>
+          <option value="preparacao">Preparação</option>
+          <option value="pintura">Pintura</option>
+          <option value="polimento">Polimento</option>
+          <option value="pronto">Check-Out</option>
           <option value="entregue">Entregue</option>
           <option value="cancelado">Cancelado</option>
         </select>
@@ -2524,12 +2541,15 @@ const BASE_ANO=2026,BASE_MES=3;
 const K_DARK='om_dark';
 const SERVICOS_DEFAULT=['Funilaria','Pintura','Funilaria + Pintura','Polimento','Martelinho de Ouro','Mecânica','Outros'];
 const KANBAN_COLS=[
-  {id:'aguardando',label:'Aguardando',cor:'#9E9C96'},
-  {id:'em-andamento',label:'Em andamento',cor:'#185FA5'},
-  {id:'aguardando-pecas',label:'Aguardando peças',cor:'#7B3FBE'},
-  {id:'pronto',label:'Pronto',cor:'#1D9E75'},
+  {id:'aguardando',label:'Aguardando Autorização de Orçamento',cor:'#9E9C96'},
+  {id:'aguardando-pecas',label:'Aguardando Peças',cor:'#7B3FBE'},
+  {id:'em-andamento',label:'Funilaria',cor:'#185FA5'},
+  {id:'preparacao',label:'Preparação',cor:'#C77D2E'},
+  {id:'pintura',label:'Pintura',cor:'#D14D8B'},
+  {id:'polimento',label:'Polimento',cor:'#0E9AA7'},
+  {id:'pronto',label:'Check-Out',cor:'#1D9E75'},
   {id:'entregue',label:'Entregue',cor:'#6B6860'},
-  {id:'cancelado',label:'Cancelado',cor:'#E24B4A'}
+  {id:'cancelado',label:'Cancelado',cor:'#E24B4A',hidden:true}
 ];
 
 /* ============ ESTADO — alimentado pelo Supabase (client.js) ============ */
@@ -2874,13 +2894,17 @@ function kanbanLabel(status){return(KANBAN_COLS.find(c=>c.id===status)||KANBAN_C
 function atualizarKanban(){
   const board=document.getElementById('kanban-board');
   board.innerHTML='';
-  KANBAN_COLS.forEach(col=>{
+  KANBAN_COLS.filter(c=>!c.hidden).forEach(col=>{
     let cards;
-    if(col.id==='entregue')cards=veiculos.filter(v=>v.saida).slice(-15).reverse();
+    if(col.id==='entregue'){
+      const am=new Date().getFullYear()+'-'+pad(new Date().getMonth()+1);
+      cards=veiculos.filter(v=>v.saida&&v.saida.data&&v.saida.data.startsWith(am))
+        .sort((a,b)=>(b.saida.data+b.saida.hora).localeCompare(a.saida.data+a.saida.hora));
+    }
     else cards=veiculos.filter(v=>!v.saida&&(v.kanbanStatus||'aguardando')===col.id);
     const colEl=document.createElement('div');
     colEl.className='kanban-col';colEl.setAttribute('data-col',col.id);
-    colEl.innerHTML=`<div class="kanban-col-header" style="color:${col.cor}">${esc(col.label)}<span class="kanban-col-count">${cards.length}</span></div><div id="kcol-${col.id}"></div>`;
+    colEl.innerHTML=`<div class="kanban-col-header" style="color:${col.cor}">${esc(col.label)}<span class="kanban-col-count">${cards.length}</span></div><div class="kanban-lane-cards" id="kcol-${col.id}"></div>`;
     colEl.addEventListener('dragover',e=>{e.preventDefault();colEl.classList.add('drag-target');});
     colEl.addEventListener('dragleave',()=>colEl.classList.remove('drag-target'));
     colEl.addEventListener('drop',e=>{e.preventDefault();colEl.classList.remove('drag-target');const vid=e.dataTransfer.getData('text/plain');moverKanban(vid,col.id);});
@@ -2926,7 +2950,7 @@ function moverKanban(vid,novaCol){
 function moverKanbanPrompt(vid){
   const v=veiculos.find(x=>x.id===vid);if(!v)return;
   const atual=v.kanbanStatus||'aguardando';
-  const opts=KANBAN_COLS.filter(c=>c.id!==atual&&c.id!==atual);
+  const opts=KANBAN_COLS.filter(c=>!c.hidden&&c.id!==atual);
   const lista=opts.map((c,i)=>`${i+1}) ${c.label}`).join('\n');
   const r=prompt('Mover "'+v.placa+'" para:\n'+lista+'\n\nDigite o número:');
   if(!r)return;const nova=opts[parseInt(r)-1];
@@ -6272,7 +6296,7 @@ function _mecCardHTML(os){
   const tempoStr= diffH>=24 ? `${Math.floor(diffH/24)}d ${diffH%24}h` : `${diffH}h ${diffMin}min`;
   const alerta = diffH>=24 ? '🔴 ' : '';
   const statusKey=os.kanbanStatus||'aguardando';
-  const corStatus={'aguardando':'var(--text3)','em-andamento':'var(--blue)','aguardando-pecas':'var(--purple)','pronto':'var(--green-dark)'}[statusKey]||'var(--text3)';
+  const corStatus=(KANBAN_COLS.find(c=>c.id===statusKey)||{}).cor||'var(--text3)';
   const statusLabel=kanbanLabel(statusKey);
   return `<div class="kanban-card" draggable="true"
       ondragstart="_mecDragId='${os.id}';event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain','${os.id}')"
@@ -6287,10 +6311,7 @@ function _mecCardHTML(os){
     <div class="kanban-card-actions" onclick="event.stopPropagation()">
       <select class="kanban-btn" onchange="mecAtualizarStatus('${os.id}',this.value);this.value=''" style="font-size:11px">
         <option value="">Mover status...</option>
-        <option value="aguardando">Aguardando</option>
-        <option value="em-andamento">Em andamento</option>
-        <option value="aguardando-pecas">Aguardando peças</option>
-        <option value="pronto">Pronto</option>
+        ${KANBAN_COLS.filter(c=>!c.hidden&&c.id!=='entregue').map(c=>`<option value="${c.id}">${esc(c.label)}</option>`).join('')}
       </select>
     </div>
   </div>`;

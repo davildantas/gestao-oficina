@@ -79,7 +79,7 @@ create table public.veiculos (
   km            numeric(10,0),
   servico       text,
   descricao     text,
-  status        text not null default 'aguardando' check (status in ('aguardando','em-andamento','aguardando-pecas','pronto','entregue','cancelado')),
+  status        text not null default 'aguardando' check (status in ('aguardando','aguardando-pecas','em-andamento','preparacao','pintura','polimento','pronto','entregue','cancelado')),
   responsavel_id uuid references public.colaboradores(id) on delete set null,
   valor_orcamento numeric(12,2),
   valor_final    numeric(12,2),
@@ -418,6 +418,12 @@ as $$
 declare
   v_ws_id uuid;
 begin
+  -- segurança: numa chamada do cliente, p_user_id tem de ser o próprio usuário.
+  -- A service role (on-signup) tem auth.uid() nulo e passa direto.
+  if auth.uid() is not null and p_user_id is distinct from auth.uid() then
+    raise exception 'p_user_id deve ser o usuário autenticado';
+  end if;
+
   insert into public.workspaces(nome, slug)
   values (p_nome, p_slug)
   returning id into v_ws_id;
@@ -455,6 +461,13 @@ begin
         role = excluded.role;
 end;
 $$;
+
+-- segurança: adicionar_membro só deve ser usada pela cadeia interna de convite
+-- (resgatar_convite, SECURITY DEFINER) e pela service role. Fechamos a chamada
+-- direta via RPC para anon/authenticated, senão qualquer usuário poderia se
+-- promover a 'dono' ou migrar para outro workspace.
+revoke execute on function public.adicionar_membro(uuid, uuid, text, text, text)
+  from public, anon, authenticated;
 
 -- =============================================================
 -- TRIGGER: atualizado_em automático
