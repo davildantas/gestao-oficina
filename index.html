@@ -462,12 +462,16 @@ async function sbExcluirAgenda(id) { await handle(db.from('agenda').delete().eq(
 async function sbSalvarParcela(parcela) {
   const row = { ...parcela, workspace_id: wsId() };
   if (row.id) return handle(db.from('parcelas').update(row).eq('id', row.id).select().single());
-  delete row.id;
-  // SELECT de `parcelas` é restrito a financeiro; ver nota em sbSalvarLancamento.
-  if (hasRole('dono','socio'))
-    return handle(db.from('parcelas').insert(row).select().single());
-  await handle(db.from('parcelas').insert(row));
-  return null;
+  // INSERT via RPC: parcela amarrada a uma OS real do workspace. O INSERT direto
+  // na tabela passou a ser só de admin (policy parcelas_insert), então o fluxo de
+  // "Parcelar" na saída (feito também por gerente/assistente) usa a RPC.
+  const id = await handle(db.rpc('registrar_parcela_os', {
+    p_veiculo_id: parcela.veiculo_id || null,
+    p_descricao: parcela.descricao || null,
+    p_valor: parcela.valor,
+    p_vencimento: parcela.vencimento
+  }));
+  return id ? { id, ...parcela } : null;
 }
 async function sbPagarParcela(id) { return handle(db.from('parcelas').update({ pago: true, pago_em: new Date().toISOString() }).eq('id', id).select().single()); }
 
